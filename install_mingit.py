@@ -36,3 +36,4 @@ try:
         print("MinGit asset not found in latest release.")
 except Exception as e:
     print("Error:", e)
+

@@ -19,3 +19,4 @@ if mingit_cmd not in paths:
 else:
     print("MinGit already in HKCU\\Environment\\Path")
 winreg.CloseKey(key)
+

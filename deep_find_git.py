@@ -28,3 +28,4 @@ for root_dir in search_roots:
 
 if not found:
     print("git.exe not found in common locations.")
+

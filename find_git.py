@@ -21,3 +21,4 @@ for c in candidates:
             found.append(c)
 
 print("Found git at:", found)
+
