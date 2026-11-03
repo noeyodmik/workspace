@@ -1,0 +1,197 @@
+FUNCTION z_mcp_get_replication_log.
+  " EC-ECP 마스터 데이터 복제 로그(SLG1: Object HRSFEC) 조회
+  " 사번(PERNR) 또는 EC 외부ID 입력 시 RP_HRSFEC_PTP_EE_REPLICATION 즉시 실행 및 로그 동시 확인 가능
+  DATA: lv_date_from   TYPE datum,
+        lv_date_to     TYPE datum,
+        lv_max         TYPE i,
+        lv_ext         TYPE balnrext,
+        lv_ext_id      TYPE string,
+        lv_usrid       TYPE pa0105-usrid,
+        lv_perid       TYPE pa0709-personid_ext,
+        lv_extid2      TYPE hrsfec_ptp_ee_sfquery_ext_id,
+        ls_filter      TYPE bal_s_lfil,
+        lt_log_header  TYPE balhdr_t,
+        lt_log_handle  TYPE bal_t_logh,
+        lt_msg_handle  TYPE bal_t_msgh,
+        ls_msgh        TYPE LINE OF bal_t_msgh,
+        ls_msg         TYPE bal_s_msg,
+        ls_bapiret     TYPE bapiret2,
+        lv_msg_text    TYPE string.
+
+  " 권한 확인: 개발자 조회 권한 S_DEVELOP
+  AUTHORITY-CHECK OBJECT 'S_DEVELOP'
+    ID 'DEVCLASS' DUMMY
+    ID 'OBJTYPE'  FIELD 'PROG'
+    ID 'OBJNAME'  DUMMY
+    ID 'P_GROUP'  DUMMY
+    ID 'ACTVT'    FIELD '03'.
+  IF sy-subrc <> 0.
+    RAISE not_allowed.
+  ENDIF.
+
+  " 1. 대상 사원의 EC 외부 식별자 결정 (사번 -> PA0105 / PA0709 조회)
+  IF iv_ext_id IS NOT INITIAL.
+    lv_ext_id = iv_ext_id.
+  ELSEIF iv_pernr IS NOT INITIAL.
+    SELECT SINGLE usrid INTO lv_usrid FROM pa0105
+      WHERE pernr = iv_pernr
+        AND ( subty = '0001' OR subty = 'ECUS' )
+        AND begda <= sy-datum
+        AND endda >= sy-datum.
+    IF sy-subrc = 0 AND lv_usrid IS NOT INITIAL.
+      lv_ext_id = lv_usrid.
+    ELSE.
+      SELECT SINGLE personid_ext INTO lv_perid FROM pa0709
+        WHERE pernr = iv_pernr.
+      IF sy-subrc = 0 AND lv_perid IS NOT INITIAL.
+        lv_ext_id = lv_perid.
+      ELSE.
+        lv_ext_id = |{ iv_pernr ALPHA = OUT }|.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+
+  " 2. 복제 실행 요청(IV_TRIGGER_REPL = 'X') 시 RP_HRSFEC_PTP_EE_REPLICATION 직접 실행
+  IF iv_trigger_repl = 'X' AND lv_ext_id IS NOT INITIAL.
+    lv_extid2 = lv_ext_id.
+    IF iv_config_id IS NOT INITIAL.
+      SUBMIT rp_hrsfec_ptp_ee_replication
+        WITH p_indiv  = 'X'
+        WITH p_confid = iv_config_id
+        WITH p_extid2 = lv_extid2
+        AND RETURN.
+    ELSE.
+      SUBMIT rp_hrsfec_ptp_ee_replication
+        WITH p_comb   = 'X'
+        WITH p_extid2 = lv_extid2
+        AND RETURN.
+    ENDIF.
+  ENDIF.
+
+  " 3. 기간 기본값 설정 (미지정 시 최근 7일)
+  lv_date_to = iv_date_to.
+  IF lv_date_to IS INITIAL.
+    lv_date_to = sy-datum.
+  ENDIF.
+
+  lv_date_from = iv_date_from.
+  IF lv_date_from IS INITIAL.
+    lv_date_from = lv_date_to - 7.
+  ENDIF.
+
+  lv_max = iv_max.
+  IF lv_max <= 0 OR lv_max > 500.
+    lv_max = 100.
+  ENDIF.
+
+  " 검색 대상 External ID 결정 (로그의 EXTNUMBER 매칭)
+  IF lv_ext_id IS NOT INITIAL.
+    lv_ext = |*{ lv_ext_id }*|.
+  ELSEIF iv_pernr IS NOT INITIAL.
+    lv_ext = |*{ iv_pernr ALPHA = OUT }*|.
+  ENDIF.
+
+  " BAL 필터 구성 (Object: HRSFEC)
+  ls_filter-object = VALUE #( ( sign = 'I' option = 'EQ' low = 'HRSFEC' ) ).
+  IF iv_subobject IS NOT INITIAL.
+    ls_filter-subobject = VALUE #( ( sign = 'I' option = 'EQ' low = iv_subobject ) ).
+  ENDIF.
+
+  ls_filter-aldate = VALUE #( ( sign = 'I' option = 'BT' low = lv_date_from high = lv_date_to ) ).
+
+  IF lv_ext IS NOT INITIAL.
+    ls_filter-extnumber = VALUE #( ( sign = 'I' option = 'CP' low = lv_ext ) ).
+  ENDIF.
+
+  " 4. DB에서 로그 검색 (BAL_DB_SEARCH -> E_T_LOG_HEADER)
+  CALL FUNCTION 'BAL_DB_SEARCH'
+    EXPORTING
+      i_s_log_filter = ls_filter
+    IMPORTING
+      e_t_log_header = lt_log_header
+    EXCEPTIONS
+      log_not_found  = 1
+      OTHERS         = 2.
+
+  IF sy-subrc <> 0 OR lt_log_header IS INITIAL.
+    ev_ok = 'X'.
+    ev_message = |조회된 복제 로그가 없습니다 ({ lv_date_from } ~ { lv_date_to }, 대상: '{ lv_ext_id }')|.
+    RETURN.
+  ENDIF.
+
+  " 최대 개수 제한
+  IF lines( lt_log_header ) > lv_max.
+    DELETE lt_log_header FROM ( lv_max + 1 ).
+  ENDIF.
+
+  et_headers[]  = lt_log_header[].
+  ev_total_logs = lines( lt_log_header ).
+
+  " 5. 로그 데이터 로드 (BAL_DB_LOAD -> E_T_LOG_HANDLE)
+  CALL FUNCTION 'BAL_DB_LOAD'
+    EXPORTING
+      i_t_log_header = lt_log_header
+    IMPORTING
+      e_t_log_handle = lt_log_handle
+    EXCEPTIONS
+      OTHERS         = 1.
+
+  " 6. 메시지 검색 (에러/경고 등 필터 적용)
+  DATA: ls_msg_filter TYPE bal_s_mfil.
+  IF iv_msgty IS NOT INITIAL.
+    IF iv_msgty = 'E'.
+      ls_msg_filter-msgty = VALUE #( ( sign = 'I' option = 'EQ' low = 'E' ) ( sign = 'I' option = 'EQ' low = 'A' ) ).
+    ELSEIF iv_msgty = 'W'.
+      ls_msg_filter-msgty = VALUE #( ( sign = 'I' option = 'EQ' low = 'E' ) ( sign = 'I' option = 'EQ' low = 'A' )
+                                     ( sign = 'I' option = 'EQ' low = 'W' ) ).
+    ELSE.
+      ls_msg_filter-msgty = VALUE #( ( sign = 'I' option = 'EQ' low = iv_msgty ) ).
+    ENDIF.
+  ENDIF.
+
+  CALL FUNCTION 'BAL_GLB_SEARCH_MSG'
+    EXPORTING
+      i_t_log_handle = lt_log_handle
+      i_s_msg_filter = ls_msg_filter
+    IMPORTING
+      e_t_msg_handle = lt_msg_handle
+    EXCEPTIONS
+      msg_not_found  = 1
+      OTHERS         = 2.
+
+  LOOP AT lt_msg_handle INTO ls_msgh.
+    CLEAR: ls_msg, ls_bapiret, lv_msg_text.
+    CALL FUNCTION 'BAL_LOG_MSG_READ'
+      EXPORTING
+        i_s_msg_handle = ls_msgh
+      IMPORTING
+        e_s_msg        = ls_msg
+      EXCEPTIONS
+        OTHERS         = 1.
+
+    IF sy-subrc = 0.
+      MESSAGE ID ls_msg-msgid TYPE ls_msg-msgty NUMBER ls_msg-msgno
+        WITH ls_msg-msgv1 ls_msg-msgv2 ls_msg-msgv3 ls_msg-msgv4
+        INTO lv_msg_text.
+
+      ls_bapiret-type       = ls_msg-msgty.
+      ls_bapiret-id         = ls_msg-msgid.
+      ls_bapiret-number     = ls_msg-msgno.
+      ls_bapiret-message    = lv_msg_text.
+      ls_bapiret-log_msg_no = ls_msgh-msgnumber.
+      ls_bapiret-message_v1 = ls_msg-msgv1.
+      ls_bapiret-message_v2 = ls_msg-msgv2.
+      ls_bapiret-message_v3 = ls_msg-msgv3.
+      ls_bapiret-message_v4 = ls_msg-msgv4.
+
+      IF ls_msg-msgty = 'E' OR ls_msg-msgty = 'A'.
+        ev_error_count = ev_error_count + 1.
+      ENDIF.
+
+      APPEND ls_bapiret TO et_messages.
+    ENDIF.
+  ENDLOOP.
+
+  ev_ok = 'X'.
+  ev_message = |조회 완료: 헤더 { lines( et_headers ) }건, 메시지 { lines( et_messages ) }건 (에러: { ev_error_count }건)|.
+ENDFUNCTION.

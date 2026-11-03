@@ -1,0 +1,66 @@
+import io, sys
+sys.path.insert(0, r"c:\Users\sapin\Desktop\Workspace\sap-mcp")
+from config import Settings
+from pyrfc import Connection
+
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+c = Connection(**Settings("EA3").rfc_params())
+
+FIXED_CM003 = """  METHOD IF_HRSFEC_CE_CHANGE_IT0008~CHANGE_INFO_TYPE_DATA.
+    DATA: LV_AMOUNT   TYPE P0008-BET01,
+          LV_CURRENCY TYPE P0008-WAERS.
+
+    IF IT_COMPENSATION_INFORMATION IS NOT INITIAL.
+      LOOP AT IT_COMPENSATION_INFORMATION ASSIGNING FIELD-SYMBOL(<LS_COMP_INFO>).
+        LOOP AT <LS_COMP_INFO>-PAYCOMPENSATION_RECURRING ASSIGNING FIELD-SYMBOL(<LS_PAYCOMP>).
+          IF <LS_PAYCOMP>-PAYCOMPVALUE-VALUE IS NOT INITIAL.
+            LV_AMOUNT = <LS_PAYCOMP>-PAYCOMPVALUE-VALUE.
+          ENDIF.
+          IF <LS_PAYCOMP>-CURRENCY_CODE IS NOT INITIAL.
+            LV_CURRENCY = <LS_PAYCOMP>-CURRENCY_CODE.
+          ENDIF.
+        ENDLOOP.
+      ENDLOOP.
+    ENDIF.
+
+    IF LV_CURRENCY IS INITIAL.
+      LV_CURRENCY = 'KRW'.
+    ENDIF.
+
+    LOOP AT CT_INFTY_0008 ASSIGNING FIELD-SYMBOL(<LS_P0008>).
+      <LS_P0008>-TRFAR = '10'.
+      <LS_P0008>-TRFGB = '10'.
+      <LS_P0008>-TRFGR = 'SEPPIN'.
+      <LS_P0008>-WAERS = LV_CURRENCY.
+      <LS_P0008>-LGA01 = '1010'.
+      <LS_P0008>-BET01 = LV_AMOUNT.
+    ENDLOOP.
+
+    IF CT_INFTY_0008 IS INITIAL.
+      DATA: LS_P0008 TYPE P0008.
+      LS_P0008-PERNR = IV_PERSONNEL_NUMBER.
+      LS_P0008-INFTY = '0008'.
+      LS_P0008-SUBTY = '0'.
+      LS_P0008-BEGDA = IV_FULL_TRANSMISSION_START_DAT.
+      LS_P0008-ENDDA = '99991231'.
+      LS_P0008-TRFAR = '10'.
+      LS_P0008-TRFGB = '10'.
+      LS_P0008-TRFGR = 'SEPPIN'.
+      LS_P0008-WAERS = LV_CURRENCY.
+      LS_P0008-LGA01 = '1010'.
+      LS_P0008-BET01 = LV_AMOUNT.
+      APPEND LS_P0008 TO CT_INFTY_0008.
+    ENDIF.
+  ENDMETHOD.
+"""
+
+lines = [{'LINE': l} for l in FIXED_CM003.strip().splitlines()]
+r = c.call('RPY_INCLUDE_UPDATE',
+           INCLUDE_NAME='ZHR_PY========================CM003',
+           TRANSPORT_NUMBER='EA3K900013',
+           SAVE_INACTIVE=' ',
+           SOURCE_EXTENDED=lines)
+print("RPY_INCLUDE_UPDATE result:", r)
+
+c.close()
+

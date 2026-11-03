@@ -1,0 +1,44 @@
+# ===== 비밀값 / 접속 정보 =====
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+*.pse
+*.cer
+sapnwrfc.ini
+mcp_config.json
+claude_desktop_config.json
+secrets*
+
+# ===== 가상환경 / 캐시 =====
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# ===== 로그 / 덤프 / 임시 출력 =====
+*.log
+audit.log
+out_*.txt
+extracted_chat.txt
+chatgpt_share_content.md
+payroll_full_log.txt
+current_in_sap.txt
+current_lzmcpu12.txt
+lzmcpu11_full.txt
+zmcp_exported_data.json
+sap-mcp/.backup/
+sap-mcp/=
+
+# ===== SAP SDK (SAP 라이선스 자산, 재배포 금지) =====
+nwrfc750P_20-70002755/
+nwrfcsdk/
+
+# ===== 교재 / 저작물 =====
+Books/
+
+# ===== SAP 표준 코드 참조용 덤프 =====
+**/H99_TRMAC_REFERENCE.abap

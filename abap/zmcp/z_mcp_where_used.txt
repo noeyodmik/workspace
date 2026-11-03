@@ -1,0 +1,37 @@
+FUNCTION z_mcp_where_used.
+  " 사용처 간이 조회 (PROG/INCL). 읽기 전용. 결과는 'KIND:이름' 텍스트 줄.
+  DATA: lv_name TYPE c LENGTH 40,
+        lt_inc  TYPE STANDARD TABLE OF d010inc-master,
+        lv_m    TYPE d010inc-master,
+        lt_x    TYPE STANDARD TABLE OF cross-include,
+        lv_i    TYPE cross-include.
+
+  lv_name = to_upper( iv_name ).
+  IF lv_name IS INITIAL OR ( lv_name(1) <> 'Z' AND lv_name(1) <> 'Y' ).
+    RAISE not_allowed.
+  ENDIF.
+
+  AUTHORITY-CHECK OBJECT 'S_DEVELOP'
+    ID 'DEVCLASS' DUMMY
+    ID 'OBJTYPE'  FIELD 'PROG'
+    ID 'OBJNAME'  DUMMY
+    ID 'P_GROUP'  DUMMY
+    ID 'ACTVT'    FIELD '03'.
+  IF sy-subrc <> 0.
+    RAISE not_allowed.
+  ENDIF.
+
+  " 인클루드로 포함하는 메인 프로그램
+  SELECT master FROM d010inc INTO TABLE lt_inc
+    UP TO 100 ROWS WHERE include = lv_name.
+  LOOP AT lt_inc INTO lv_m.
+    APPEND VALUE #( line = |INCLUDED_BY:{ lv_m }| ) TO et_usages.
+  ENDLOOP.
+
+  " 프로그램(SUBMIT/PERFORM 등) 참조
+  SELECT include FROM cross INTO TABLE lt_x
+    UP TO 100 ROWS WHERE type = 'R' AND name = lv_name.
+  LOOP AT lt_x INTO lv_i.
+    APPEND VALUE #( line = |REFERENCED_IN:{ lv_i }| ) TO et_usages.
+  ENDLOOP.
+ENDFUNCTION.

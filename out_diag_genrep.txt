@@ -1,0 +1,7 @@
+EV_OK=X
+ZHR_PY========================CP rc=4 inc=ZHR_PY========================CM003 line=9 word=LV_AMOUNT msg=The type "PAD_SFEC_DOUBLE_VALUE" of "<LS_PAYCOMP>-PAYCOMPVALUE" is not compatible with the type "P(7.2)" of "LV_AMOUNT" (see long text).
+HRSFEC_B_CE_CHANGE_IT0002=====CP rc=0 inc= line=0 word= msg=
+HRSFEC_B_CE_CHANGE_IT0008=====CP rc=0 inc= line=0 word= msg=
+HRSFEC_B_CE_CHANGE_IT0105_EMA=CP rc=8 inc=HRSFEC_B_CE_CHANGE_IT0008=====CP line=9 word= msg=Internal error code 8.
+
+Restored identical: True (199 lines)

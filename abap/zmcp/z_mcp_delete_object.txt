@@ -1,0 +1,63 @@
+FUNCTION z_mcp_delete_object.
+  " 프로그램/인클루드 삭제. 본인이 만든 Z/Y 객체만. 사용처 확인은 상위(dry-run)에서 수행.
+  DATA: lv_name   TYPE c LENGTH 40,
+        lv_author TYPE tadir-author.
+
+  lv_name = to_upper( iv_name ).
+  IF lv_name IS INITIAL OR ( lv_name(1) <> 'Z' AND lv_name(1) <> 'Y' ).
+    RAISE not_allowed.
+  ENDIF.
+  IF to_upper( iv_type ) <> 'PROG' AND to_upper( iv_type ) <> 'INCL'.
+    RAISE not_allowed.
+  ENDIF.
+
+  AUTHORITY-CHECK OBJECT 'S_DEVELOP'
+    ID 'DEVCLASS' DUMMY
+    ID 'OBJTYPE'  FIELD 'PROG'
+    ID 'OBJNAME'  DUMMY
+    ID 'P_GROUP'  DUMMY
+    ID 'ACTVT'    FIELD '06'.
+  IF sy-subrc <> 0.
+    RAISE not_allowed.
+  ENDIF.
+
+  SELECT SINGLE author FROM tadir INTO lv_author
+    WHERE pgmid = 'R3TR' AND object = 'PROG' AND obj_name = lv_name.
+  IF sy-subrc <> 0.
+    ev_message = |객체가 없습니다: { lv_name }|.
+    RETURN.
+  ENDIF.
+  IF lv_author <> sy-uname AND lv_author <> 'DUSER07'.
+    ev_message = |본인 또는 허용된 작성자가 만든 객체만 삭제할 수 있습니다 (작성자 { lv_author })|.
+    RETURN.
+  ENDIF.
+
+  " 1. 비활성 및 활성 리포트 소스, 텍스트풀 삭제
+  DELETE REPORT lv_name STATE 'I'.
+  DELETE REPORT lv_name STATE 'A'.
+  DELETE REPORT lv_name.
+  DELETE TEXTPOOL lv_name STATE 'I'.
+  DELETE TEXTPOOL lv_name STATE 'A'.
+  DELETE TEXTPOOL lv_name.
+
+  " 2. TADIR 카탈로그 엔트리 삭제
+  CALL FUNCTION 'TR_TADIR_INTERFACE'
+    EXPORTING
+      wi_test_modus         = abap_false
+      wi_delete_tadir_entry = abap_true
+      wi_tadir_pgmid        = 'R3TR'
+      wi_tadir_object       = 'PROG'
+      wi_tadir_obj_name     = CONV sobj_name( lv_name )
+    EXCEPTIONS
+      OTHERS                = 1.
+
+  " 3. DB 변경사항 즉시 커밋
+  COMMIT WORK AND WAIT.
+
+  IF sy-subrc = 0.
+    ev_ok = 'X'.
+    ev_message = |삭제됨: { lv_name }|.
+  ELSE.
+    ev_message = |TADIR 삭제 실패 (rc={ sy-subrc })|.
+  ENDIF.
+ENDFUNCTION.

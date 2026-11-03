@@ -1,0 +1,2085 @@
+=== LZHR0004U09 ===
+FUNCTION ZHR0004_GET_PAYRESULT.
+*"----------------------------------------------------------------------
+*"*"Local interface:
+*"  IMPORTING
+*"     VALUE(PERNR) TYPE  PERSNO
+*"     VALUE(ABKRS) TYPE  ABKRS
+*"     VALUE(YYYYMM) TYPE  FAPER
+*"     VALUE(OCRSN) TYPE  PAY_OCRSN OPTIONAL
+*"     VALUE(PAYID) TYPE  PAYID OPTIONAL
+*"     VALUE(PAYDT) TYPE  PAY_DATE
+*"     VALUE(RETRO) TYPE  ZRETRO DEFAULT 'SUM'
+*"     VALUE(FLAG) TYPE  CHAR01 DEFAULT 'X'
+*"  EXPORTING
+*"     VALUE(RESULT) LIKE  ZHRS0012 STRUCTURE  ZHRS0012
+*"     VALUE(EX_PAYDT) TYPE  PAYDT
+*"  EXCEPTIONS
+*"      SYSTEM_FAILURE
+*"      COMMUNICATION_FAILURE
+*"      RESOURCE_FAILURE
+*"----------------------------------------------------------------------
+*                           Change History
+*---------- ------------ ----------- -----------------------------------
+* ChangeNo.  Changed on   Changed By  Description
+*---------- ------------ ----------- -----------------------------------
+* 1426        2023.08.26  황용하      코비전 I/F 로그 저장 기능 추가
+* 5369        2024.04.30  황용하      급여지급대장 수정
+* 5390        2024.05.30  황용하      특별성과급(비과세)를 비과세소득에 합산
+* 5951        2024.06.19  황용하      임금유형:휴가비 추가에 따른 수정
+************************************************************************
+  DATA: PAY_DATE  TYPE PAY_DATE,
+        RETROYM   TYPE FAPER,
+        PAY_BEGDA TYPE BEGDA,
+        PAY_ENDDA TYPE ENDDA.
+  DATA: LV_DATE     TYPE SY-DATUM.
+  DATA: LS_STR      TYPE ZHRS0004.
+
+  DATA: LT_P2003    TYPE TABLE OF P2003 WITH HEADER LINE.
+*----------------------------------------------------------------------*
+* 급여결과 가져오기
+*----------------------------------------------------------------------*
+  CLEAR: RT[], CRT[], WPBP[].
+  CALL FUNCTION 'ZHR0004_PYKRF001'
+    EXPORTING
+      PERNR     = PERNR
+      ABKRS     = ABKRS
+      YYYYMM    = YYYYMM
+      OCRSN     = OCRSN
+      PAYID     = PAYID
+      PAYDT     = PAYDT
+      RETRO     = RETRO
+      FLAG      = FLAG
+    IMPORTING
+      PAY_DATE  = PAY_DATE
+      RETROYM   = RETROYM
+      PAY_BEGDA = PAY_BEGDA
+      PAY_ENDDA = PAY_ENDDA
+    TABLES
+      RT        = RT
+      CRT       = CRT
+      WPBP      = WPBP
+      AB        = AB.
+
+  EX_PAYDT = PAY_DATE.
+
+*"BETRG(금액), BETPE(단가) 필드 모두 값이 없는 레코드 삭제
+  DELETE RT WHERE BETRG IS INITIAL
+              AND BETPE IS INITIAL
+              AND ANZHL IS INITIAL.
+
+  CHECK RT[] IS NOT INITIAL.
+
+  IF  RT[]   IS NOT INITIAL.
+    LOOP   AT RT.
+      IF     OCRSN  =  ' '
+        OR OCRSN  =  '0007'
+        OR OCRSN  =  '0008'
+        OR OCRSN  =  '0005'
+        OR OCRSN  =  '9001'.
+        PERFORM GET_REGULAR USING RT.
+      ELSE.
+        PERFORM GET_BONUS   USING RT.
+      ENDIF.
+    ENDLOOP.
+  ENDIF.
+
+* 지급금액 합산에 기지급금 제외 (P26 ~ P30)
+  WA-P_TOTAL = WA-P01  + WA-P02  + WA-P03  + WA-P04  + WA-P05
+             + WA-P06  + WA-P07  + WA-P08  + WA-P09  + WA-P10
+             + WA-P11  + WA-P12  + WA-P13  + WA-P14  + WA-P15
+             + WA-P16  + WA-P17  + WA-P18  + WA-P19  + WA-P20
+             + WA-P21  + WA-P22  + WA-P23  + WA-P25  + WA-P27
+             + WA-P28   "20250515 추가 (기타수당)
+             + WA-P29   "20260901 추가 (포상금) SEPPIN KDY
+             + WA-P32   "20260325 추가 (AI수당)
+             + WA-P26  + WA-R_TOTAL.                           " #5951 추가
+
+  "공제총액
+  WA-D_TOTAL = WA-D01_2 + WA-D02_2 + WA-D03 + WA-D04_2 + WA-D05_2
+             + WA-D06_2
+             + WA-D07   + WA-D08   + WA-D09 + WA-D10
+             + WA-D11   + WA-D12   + WA-D13 + WA-D14   + WA-D15
+             + WA-D16   + WA-D17.
+
+  "실지급액
+  WA-TOTAL = WA-P_TOTAL - WA-D_TOTAL. "실지급액
+
+  "회사지급합계
+  WA-C_TOTAL = WA-C01   + WA-C02   + WA-C03  + WA-C04  + WA-C05.
+
+  "근무일수가 없으면 총근로시간수도 조회하지 않는다.
+  CLEAR WA-H00.
+  LOOP AT WPBP.
+    WA-H00 = WA-H00 + WPBP-ASOLL.
+  ENDLOOP.
+
+  IF   WA-H00 = 0.
+    CLEAR WA-H99.
+  ELSE.
+    WA-H99 = 209 + WA-T02 + WA-T03 + WA-T04 + WA-T05 + WA-T06.
+
+  ENDIF.
+
+
+  MOVE-CORRESPONDING WA TO RESULT.
+
+  RESULT-FPPER = YYYYMM.
+  RESULT-WAERS = 'KRW'.
+  RESULT-PAYDT = PAY_DATE.
+  RESULT-OCRSN = OCRSN.
+  RESULT-PAYID = PAYID.
+
+
+**----------------------------------------------------------------------*
+** 휴무 정보 가져오기
+**----------------------------------------------------------------------*
+  HD-H00 = WA-H00.
+  HD-H99 = WA-H99.
+  CLEAR WA.
+  IF  AB[]  IS  NOT  INITIAL.
+    LOOP  AT  AB.
+      IF  OCRSN  = ' '
+      OR  OCRSN  = '0007'.
+        PERFORM   GET_HOLIDAYS USING AB.
+      ENDIF.
+    ENDLOOP.
+  ENDIF.
+
+**----------------------------------------------------------------------*
+** 근무 정보 가져오기(IT2003)
+**----------------------------------------------------------------------*
+*  CLEAR: LT_P2003, LT_P2003[].
+*
+*  SELECT * INTO CORRESPONDING FIELDS OF TABLE LT_P2003
+*    FROM PA2003
+*   WHERE PERNR = PERNR
+*     AND BEGDA  >= PAY_BEGDA
+*     AND ENDDA  <= PAY_ENDDA.
+*
+*  IF LT_P2003[] IS NOT INITIAL.
+*    LOOP AT LT_P2003.
+*      HD-H00  =   HD-H00  +  1 .  "근무일수
+*      HD-H99  =   HD-H99  +  LT_P2003-STDAZ .  "근무시간
+*    ENDLOOP.
+*  ENDIF.
+*
+
+  MOVE-CORRESPONDING HD TO RESULT .
+
+  CLEAR HD.
+*----------------------------------------------------------------------*
+* 인사정보 가져오기
+*----------------------------------------------------------------------*
+
+*  IF   PAY_DATE IS NOT INITIAL.
+*    LV_DATE = PAY_DATE.
+*  ELSE.
+*    CONCATENATE YYYYMM '01' INTO LV_DATE.
+*  ENDIF.
+
+  CLEAR LV_DATE.
+  CONCATENATE YYYYMM '01' INTO LV_DATE.
+
+  CALL FUNCTION 'RP_LAST_DAY_OF_MONTHS'
+    EXPORTING
+      DAY_IN                  = LV_DATE
+   IMPORTING
+     LAST_DAY_OF_MONTH       = LV_DATE.
+
+  CALL FUNCTION 'ZHR0002_GET_BASIC_DATA'
+    EXPORTING
+      IM_DATE  = LV_DATE
+      IM_PERNR = PERNR
+    IMPORTING
+      EX_STRU  = LS_STR.
+
+  MOVE-CORRESPONDING LS_STR TO RESULT.
+  MOVE PAY_DATE TO RESULT-PAYDT. "지급일
+
+ENDFUNCTION.
+=== ZHRPYR0001_F01 ===
+*&---------------------------------------------------------------------*
+*&  Include           ZHRPYR0001_F01
+*&---------------------------------------------------------------------*
+
+*&---------------------------------------------------------------------*
+*&      Form  CREATE_AND_INIT_ALV
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM CREATE_AND_INIT_ALV .
+  PERFORM SET_VARIANT.
+  PERFORM FIELDCAT USING 'FIELDCATALOG01' 'ITAB' SY-REPID.
+  PERFORM MODIFY_FIELDCAT.
+  PERFORM SET_LAYOUT.
+  PERFORM EXCLUDE_TOOLBAR_MAIN TABLES TOOLBAR01.
+  PERFORM SORT_ALV.
+  PERFORM CREATE_ALV_GRID.
+  PERFORM DISPLAY_ALV.
+  PERFORM SET_HANDLER.
+  PERFORM DISPLAY_HEADER.
+ENDFORM.                    " CREATE_AND_INIT_ALV
+*&---------------------------------------------------------------------*
+*&      Form  SET_VARIANT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM SET_VARIANT .
+  VARIANT01-REPORT    =    SY-REPID.
+ENDFORM.                    " SET_VARIANT
+*&---------------------------------------------------------------------*
+*&      Form  fieldcat
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM FIELDCAT USING P_FIELDCAT P_INTERNAL_TAB  P_PROGRAM.
+
+  DATA: WK_INTERNAL_TAB(30),
+        GT_FIELDCAT_ALV     TYPE SLIS_T_FIELDCAT_ALV,
+        WK_PROGRAM          LIKE SY-REPID.
+  DATA: LV_TABLE_NAME      LIKE FELD-NAME.
+  DATA: GS_FIELDCAT_ALV    TYPE SLIS_FIELDCAT_ALV.
+
+  FIELD-SYMBOLS <FCAT>     TYPE STANDARD TABLE.
+  FIELD-SYMBOLS <FIELDCAT> TYPE STANDARD TABLE.
+
+
+  CONCATENATE P_INTERNAL_TAB '[]' INTO LV_TABLE_NAME.
+  ASSIGN (LV_TABLE_NAME) TO <FCAT>.
+
+
+  CONCATENATE P_FIELDCAT '[]' INTO LV_TABLE_NAME.
+  ASSIGN (LV_TABLE_NAME) TO <FIELDCAT>.
+
+
+  CLEAR: WK_INTERNAL_TAB, WK_PROGRAM.
+  WK_INTERNAL_TAB = P_INTERNAL_TAB.
+  WK_PROGRAM      = P_PROGRAM.
+
+  SET PARAMETER ID 'ALVBUFFER' FIELD SY-DATUM.
+  REFRESH GT_FIELDCAT_ALV.
+  CLEAR   GT_FIELDCAT_ALV.
+
+
+
+  "필드카탈로그 생성
+  CALL FUNCTION 'ZHR0001_ALV_FIELDCATALOG_MERGE'
+    EXPORTING
+      I_TABNAME      = WK_INTERNAL_TAB
+      I_PROGRAM_NAME = WK_PROGRAM
+    TABLES
+      FIELDCAT       = GT_FIELDCAT_ALV[].
+
+
+  CALL FUNCTION 'LVC_TRANSFER_FROM_SLIS'
+    EXPORTING
+      IT_FIELDCAT_ALV = GT_FIELDCAT_ALV[]
+    IMPORTING
+      ET_FIELDCAT_LVC = <FIELDCAT>
+    TABLES
+      IT_DATA         = <FCAT>     "gt_dis
+    EXCEPTIONS
+      IT_DATA_MISSING = 1
+      OTHERS          = 2.
+
+
+  CALL FUNCTION 'LVC_FIELDCAT_COMPLETE'
+    CHANGING
+      CT_FIELDCAT = <FIELDCAT>.
+
+
+ENDFORM.                    " fieldcat
+*&---------------------------------------------------------------------*
+*&      Form  MODIFY_FIELDCAT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM MODIFY_FIELDCAT .
+  DATA: LS_FIELDCAT LIKE LVC_S_FCAT.
+  DATA: POS TYPE I.
+
+  LOOP AT FIELDCATALOG01 INTO LS_FIELDCAT.
+
+    IF LS_FIELDCAT-DATATYPE <> 'CURR' AND
+       LS_FIELDCAT-DATATYPE <> 'DEC'.
+      LS_FIELDCAT-NO_OUT = 'X'.
+    ENDIF.
+
+    IF LS_FIELDCAT-FIELDNAME = 'BSGRD'.
+      LS_FIELDCAT-NO_OUT = 'X'.
+    ENDIF.
+
+    MODIFY FIELDCATALOG01 FROM LS_FIELDCAT.
+  ENDLOOP.
+
+
+  DEFINE CATALOG.
+
+    POS = POS + 1.
+    CLEAR:  LS_FIELDCAT.
+
+    LS_FIELDCAT-COL_POS       = POS.
+    LS_FIELDCAT-KEY           = &1.
+    LS_FIELDCAT-FIELDNAME     = &2.
+    LS_FIELDCAT-COLTEXT       = &3.
+    LS_FIELDCAT-DO_SUM        = &4.
+    LS_FIELDCAT-CURRENCY      = &5.
+    LS_FIELDCAT-NO_OUT        = &6.
+    LS_FIELDCAT-EDIT          = &7.
+    LS_FIELDCAT-JUST          = &8.
+
+    LS_FIELDCAT-SCRTEXT_L     = &3.
+    LS_FIELDCAT-SCRTEXT_M     = &3.
+    LS_FIELDCAT-SCRTEXT_S     = &3.
+
+    MODIFY FIELDCATALOG01 FROM LS_FIELDCAT
+                  TRANSPORTING KEY FIELDNAME COLTEXT DO_SUM CURRENCY
+                               NO_OUT EDIT JUST
+                         WHERE FIELDNAME = LS_FIELDCAT-FIELDNAME.
+    CLEAR LS_FIELDCAT.
+  END-OF-DEFINITION.
+
+  CATALOG:
+**  1     2             3             4      5        6     7     8
+  'X'   'PERNR'      '사원번호'       ' '  ''    ' '  ' '   ' ' ,
+  'X'   'PERSONID_EXT'      'PERSON ID'       ' '  ''    ' '  ' '   ' ' ,
+  'X'   'ENAME'      '성명'           ' '  ''    ' '  ' '   ' ' ,
+  ' '   'AGE'        '연령'           ' '  ''      ' '  ' '   ' ' ,
+  ' '   'WERKS_TEXT' '회사명'         ' '  ''    ' '  ' '   ' ' ,
+  ' '   'PERSG_TEXT' '사원그룹명'      ' '  ''    ' '  ' '   ' ' ,
+  ' '   'PERSK_TEXT' '사원하위그룹명'  ' '  ''    ' '  ' '   ' ' ,
+  ' '   'ABKRS_TEXT' '급여영역명'      ' '  ''    ' '  ' '   ' ' ,
+  ' '   'ZZCLASSTX' '급지명'      ' '  ''    ' '  ' '   ' ' ,
+  ' '   'ORGFN' '조직명'          ' '  ''    ' '  ' '   ' ' ,
+  ' '   'ORGEH_TEXT' '소속'          ' '  ''    ' '  ' '   ' ' ,
+  ' '   'KOSTL' '코스트센터'          ' '  ''    ' '  ' '   ' ' ,
+  ' '   'KOSTL_TEXT' '코스트 센터명'          ' '  ''    ' '  ' '   ' ' ,
+  ' '   'POSNR' 'WBS'          ' '  ''    ' '  ' '   ' ' ,
+  ' '   'COOBJ_TEXT1' 'WBS명'          ' '  ''    ' '  ' '   ' ' ,
+  ' '   'KTEXT' '비용구분'          ' '  ''    ' '  ' '   ' ' ,
+  ' '   'STTX1'      '고용상태'        ' '  ''    ' '  ' '   ' ' ,
+  ' '   'HRDAT'      '입사일'          ' '  ''    ' '  ' '   ' ' ,
+  ' '   'FRDAT'      '퇴사일'          ' '  ''    ' '  ' '   ' ' ,
+  ' '   'BANKA'      '은행명'          ' '  ''    ' '  ' '   ' ' ,
+  ' '   'BANKN'      '계좌번호'        ' '  ''    ' '  ' '   ' ' ,
+  ' '   'P28'      '기타지급'          ' '  ''    ' '  ' '   ' ' ,
+  ' '   'POSNAME'    '최종직책'   ' '  ''    ' '  ' '  ' ' .
+
+ENDFORM.                    " MODIFY_FIELDCAT
+*&---------------------------------------------------------------------*
+*&      Form  SET_LAYOUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM SET_LAYOUT .
+
+  LAYOUT01-ZEBRA         =    'X'.              "얼룩무늬
+  LAYOUT01-CWIDTH_OPT    =    'X'.              "필드길이 자동조정
+*  LAYOUT01-SGL_CLK_HD    =    'X'.              "해더라인 sort
+*  layout01-excp_fname    =    'ICON'.           "LED
+*  layout01-info_fname    =    'COLOR'.          "COLOR
+*  layout01-stylefname    =    'STYLE'.          "BUTTON STYLE
+*  layout01-no_rowmark    =    'X'.              "선택box 감춤
+*  layout01-totals_bef    =    'X'.              "SUBTOTAL 출력
+
+ENDFORM.                    " SET_LAYOUT
+*&---------------------------------------------------------------------*
+*&      Form  EXCLUDE_TOOLBAR_MAIN
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM EXCLUDE_TOOLBAR_MAIN  TABLES P_EXCLUDE_TOOLBAR_MAIN.
+
+  PERFORM APPEND_EXCLUDE_TOOLBAR
+         TABLES P_EXCLUDE_TOOLBAR_MAIN
+         USING :
+              CL_GUI_ALV_GRID=>MC_FC_LOC_COPY,          " 행 카피.
+              CL_GUI_ALV_GRID=>MC_FC_HTML,              " HTML 서식.
+              CL_GUI_ALV_GRID=>MC_FC_LOC_COPY_ROW,      " 행 카피.
+              CL_GUI_ALV_GRID=>MC_FC_LOC_CUT,           " 가위.
+              CL_GUI_ALV_GRID=>MC_FC_LOC_DELETE_ROW,    " 행삭제.
+              CL_GUI_ALV_GRID=>MC_FC_LOC_INSERT_ROW,    " 행삽입.
+              CL_GUI_ALV_GRID=>MC_FC_LOC_MOVE_ROW,      " 행이동
+              CL_GUI_ALV_GRID=>MC_FC_LOC_APPEND_ROW,    " 라인생성.
+              CL_GUI_ALV_GRID=>MC_FC_LOC_PASTE,         " 겹쳐쓰기.
+              CL_GUI_ALV_GRID=>MC_FC_LOC_PASTE_NEW_ROW. " 겹쳐쓰기.
+ENDFORM.                    " exclude_toolbar_main
+*&---------------------------------------------------------------------*
+*&      Form  APPEND_EXCLUDE_TOOLBAR
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_P_EXCLUDE_TOOLBAR_MAIN  text
+*      -->P_CL_GUI_ALV_GRID=>MC_FC_EXCL_AL  text
+*----------------------------------------------------------------------*
+FORM APPEND_EXCLUDE_TOOLBAR TABLES P_TABLE
+                              USING P_VALUE.
+  DATA : LS_EXCLUDE TYPE UI_FUNC.
+  LS_EXCLUDE = P_VALUE.
+  APPEND LS_EXCLUDE TO P_TABLE.
+
+ENDFORM.                    " append_exclude_functions
+*&---------------------------------------------------------------------*
+*&      Form  SORT_ALV
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM SORT_ALV .
+
+  DATA     :  WA_SORT TYPE LVC_S_SORT.
+  CLEAR    :  SORT01,  WA_SORT.
+  REFRESH  :  SORT01.
+
+*  CLEAR WA_SORT.
+*  WA_SORT-SPOS        =   '1'.
+*  WA_SORT-FIELDNAME   =   'LEBEL1'.
+*  WA_SORT-UP          =   'X'.
+**  wa_sort-subtot      =   'X'. "SUBTOTAL.
+*  APPEND WA_SORT TO SORT01.
+*
+*  CLEAR WA_SORT.
+*  WA_SORT-SPOS        =   '2'.
+*  WA_SORT-FIELDNAME   =   'LEBEL2'.
+**  WA_SORT-UP          =   'X'.
+**  wa_sort-subtot      =   'X'. "SUBTOTAL.
+*  APPEND WA_SORT TO SORT01.
+*
+*  CLEAR WA_SORT.
+*  WA_SORT-SPOS        =   '3'.
+*  WA_SORT-FIELDNAME   =   'ORGTX'.
+*  WA_SORT-UP          =   'X'.
+**  wa_sort-subtot      =   'X'. "SUBTOTAL.
+*  APPEND WA_SORT TO SORT01.
+
+ENDFORM.                    " SORT_ALV
+*&---------------------------------------------------------------------*
+*&      Form  CREATE_ALV_GRID
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM CREATE_ALV_GRID .
+
+  IF  DG_SPLITTER01  IS  INITIAL.
+
+    CREATE OBJECT DG_DYNDOC_ID01
+      EXPORTING
+        STYLE = 'ALV_GRID'.
+
+    CREATE OBJECT DG_SPLITTER01
+      EXPORTING
+        PARENT  = CL_GUI_CONTAINER=>SCREEN0
+        ROWS    = 2
+        COLUMNS = 1.
+
+    CALL METHOD DG_SPLITTER01->GET_CONTAINER
+      EXPORTING
+        ROW       = 1
+        COLUMN    = 1
+      RECEIVING
+        CONTAINER = DG_PARENT_HTML01.
+
+    CALL METHOD DG_SPLITTER01->GET_CONTAINER
+      EXPORTING
+        ROW       = 2
+        COLUMN    = 1
+      RECEIVING
+        CONTAINER = DG_PARENT_GRID01.
+
+    CALL METHOD DG_SPLITTER01->SET_ROW_HEIGHT
+      EXPORTING
+        ID     = 1
+        HEIGHT = 10.
+
+    CREATE OBJECT GRID01
+      EXPORTING
+        I_PARENT = DG_PARENT_GRID01.
+
+  ELSE.
+
+    PERFORM CONTAINER_REFRESH.
+
+  ENDIF.
+
+ENDFORM.                    " CREATE_ALV_GRID
+*&---------------------------------------------------------------------*
+*&      Form  CONTAINER_REFRESH
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM CONTAINER_REFRESH .
+
+  DATA : L_LVC_S_STBL TYPE LVC_S_STBL.
+
+  L_LVC_S_STBL-ROW = 'X'.
+  L_LVC_S_STBL-COL = 'X'.
+
+  CALL METHOD GRID01->REFRESH_TABLE_DISPLAY
+    EXPORTING
+      IS_STABLE = L_LVC_S_STBL.
+
+  CALL METHOD CL_GUI_CFW=>FLUSH.
+
+ENDFORM.                    " CONTAINER_REFRESH
+*&---------------------------------------------------------------------*
+*&      Form  DISPLAY_ALV
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM DISPLAY_ALV .
+
+  CALL METHOD GRID01->SET_TABLE_FOR_FIRST_DISPLAY
+    EXPORTING
+      IS_VARIANT           = VARIANT01
+      I_SAVE               = SAVE
+      IS_LAYOUT            = LAYOUT01
+      IT_TOOLBAR_EXCLUDING = TOOLBAR01
+      I_DEFAULT            = 'X'
+    CHANGING
+      IT_OUTTAB            = ITAB[]
+      IT_SORT              = SORT01
+      IT_FIELDCATALOG      = FIELDCATALOG01[].
+
+
+ENDFORM.                    " DISPLAY_ALV
+*&---------------------------------------------------------------------*
+*&      Form  SET_HANDLER
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM SET_HANDLER .
+  CREATE OBJECT G_LCL_EVENT.
+  SET HANDLER G_LCL_EVENT->HANDLER_TOOLBAR FOR GRID01.
+  SET HANDLER G_LCL_EVENT->HANDLER_USER_COMMAND FOR GRID01.
+  SET HANDLER G_LCL_EVENT->HANDLER_BEFORE_USER_COMMAND
+                           FOR GRID01.
+  SET HANDLER G_LCL_EVENT->HANDLER_AFTER_USER_COMMAND
+                           FOR GRID01.
+  SET HANDLER G_LCL_EVENT->HANDLER_HOTSPOT_CLICK FOR GRID01.
+  SET HANDLER G_LCL_EVENT->HANDLER_DOUBLE_CLICK FOR GRID01.
+  SET HANDLER G_LCL_EVENT->HANDLER_AFTER_REFRESH_CLICK
+                           FOR GRID01.
+  SET HANDLER G_LCL_EVENT->HANDLER_PRINT_TOP_OF_PAGE
+                           FOR GRID01.
+  SET HANDLER G_LCL_EVENT->HANDLER_MENU_BUTTON FOR GRID01.
+  SET HANDLER G_LCL_EVENT->HANDLER_BUTTON_CLICK FOR GRID01.
+  SET HANDLER G_LCL_EVENT->HANDLER_SUBTOTAL_TEXT FOR GRID01.
+
+*  CALL METHOD grid01->set_ready_for_input
+*    EXPORTING
+*      i_ready_for_input = 1.
+
+ENDFORM.                    " SET_HANDLER
+*&---------------------------------------------------------------------*
+*&      Form  DISPLAY_HEADER
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM DISPLAY_HEADER .
+
+  CALL METHOD DG_DYNDOC_ID01->INITIALIZE_DOCUMENT.
+  CALL METHOD GRID01->LIST_PROCESSING_EVENTS
+    EXPORTING
+      I_EVENT_NAME = 'TOP_OF_PAGE'
+      I_DYNDOC_ID  = DG_DYNDOC_ID01.
+
+ENDFORM.                    " DISPLAY_HEADER
+*&---------------------------------------------------------------------*
+*&      Form  PRINT_TOP_OF_PAGE
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM PRINT_TOP_OF_PAGE USING HEADER TYPE REF TO CL_DD_DOCUMENT.
+  DATA: LV_LINE(5).
+
+  IF LV_FLAG IS INITIAL.
+    DATA: TEXT TYPE SDYDO_TEXT_ELEMENT.
+*    CREATE OBJECT HEADER.
+
+*    CLEAR TEXT.
+*    TEXT = SY-TITLE.
+*    PERFORM ADD_HEADER USING HEADER TEXT.
+*
+*    CALL METHOD DG_DYNDOC_ID01->NEW_LINE
+*      EXPORTING
+*        REPEAT = 0.
+
+    CLEAR TEXT.
+    IF P_PAYDT IS NOT INITIAL AND
+       P_OCRSN IS NOT INITIAL.
+      CONCATENATE '지급일 :' P_PAYDT+0(4) '.'
+                             P_PAYDT+4(2) '.'
+                             P_PAYDT+6(2) INTO TEXT.
+    ELSE.
+      CONCATENATE '급여기간 :' PNPPABRJ '년'
+                              PNPPABRP '월' INTO TEXT
+                              SEPARATED BY SPACE.
+    ENDIF.
+
+    PERFORM ADD_BODY USING HEADER TEXT.
+
+
+    CLEAR: LV_LINE.
+    DESCRIBE TABLE ITAB LINES LV_LINE.
+
+    CLEAR TEXT.
+    CONCATENATE '인원 :' LV_LINE INTO TEXT
+    SEPARATED BY SPACE.
+    PERFORM ADD_BODY   USING HEADER TEXT.
+
+
+    PERFORM HTML.
+    LV_FLAG = 'X'.
+  ENDIF.
+ENDFORM.                    " PRINT_TOP_OF_PAGE
+*&---------------------------------------------------------------------*
+*&      Form  ADD_HEADER
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_HEADER  text
+*      -->P_TEXT  text
+*      -->P_15     text
+*----------------------------------------------------------------------*
+FORM ADD_HEADER  USING    P_HEADER TYPE REF TO CL_DD_DOCUMENT
+                          P_TEXT TYPE SDYDO_TEXT_ELEMENT.
+
+  CALL METHOD DG_DYNDOC_ID01->ADD_TEXT
+    EXPORTING
+      TEXT      = P_TEXT
+      SAP_STYLE = CL_DD_AREA=>HEADING.
+
+ENDFORM.                    " ADD_HEADER
+*&---------------------------------------------------------------------*
+*&      Form  ADD_BODY
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_HEADER  text
+*      -->P_TEXT  text
+*      -->P_12     text
+*----------------------------------------------------------------------*
+FORM ADD_BODY  USING   P_HEADER TYPE REF TO CL_DD_DOCUMENT
+                          P_TEXT TYPE SDYDO_TEXT_ELEMENT.
+
+  CALL METHOD DG_DYNDOC_ID01->NEW_LINE
+    EXPORTING
+      REPEAT = 0.
+  CALL METHOD DG_DYNDOC_ID01->ADD_TEXT
+    EXPORTING
+      TEXT      = P_TEXT
+      SAP_STYLE = CL_DD_AREA=>LIST_NORMAL.
+
+ENDFORM.                    " ADD_BODY
+
+*&---------------------------------------------------------------------*
+*&      Form  HTML
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM HTML .
+
+  DATA : DL_LENGTH        TYPE I,                           " Length
+         DL_BACKGROUND_ID TYPE SDYDO_KEY VALUE SPACE. " Background_id
+
+  IF DG_HTML_CNTRL01 IS INITIAL.
+    CREATE OBJECT DG_HTML_CNTRL01
+      EXPORTING
+        PARENT = DG_PARENT_HTML01.
+  ENDIF.
+
+  CALL FUNCTION 'REUSE_ALV_GRID_COMMENTARY_SET'
+    EXPORTING
+      DOCUMENT = DG_DYNDOC_ID01
+      BOTTOM   = SPACE
+    IMPORTING
+      LENGTH   = DL_LENGTH.
+
+  CALL METHOD DG_DYNDOC_ID01->MERGE_DOCUMENT.
+
+  DG_DYNDOC_ID01->HTML_CONTROL = DG_HTML_CNTRL01.
+
+  CALL METHOD DG_DYNDOC_ID01->DISPLAY_DOCUMENT
+    EXPORTING
+      REUSE_CONTROL      = 'X'
+      PARENT             = DG_PARENT_HTML01
+    EXCEPTIONS
+      HTML_DISPLAY_ERROR = 1.
+
+ENDFORM.                    " HTML
+*&---------------------------------------------------------------------*
+*&      Form  INIT_SELECTION_SCREEN
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM INIT_SELECTION_SCREEN .
+
+  DATA :   P_PARVA        TYPE    XUVALUE.
+  DATA :   P_PARVA1       TYPE    XUVALUE.
+
+* 급여영역 설정
+  CALL FUNCTION 'CACS_GET_USER_PARAMETER'
+    EXPORTING
+      I_UNAME        = SY-UNAME
+      I_PARID        = 'ABK'
+    IMPORTING
+      E_VALUE        = P_PARVA
+    EXCEPTIONS
+      NO_ENTRY_FOUND = 1
+      OTHERS         = 2.
+
+  IF  SY-SUBRC        <> 0.
+*      PNPXABKR        = 'Y1'.  "사용자매개변수 미등록시 기본급여영역
+  ELSE.
+    PNPXABKR        =  P_PARVA.
+    PNPABKRS-LOW    =  P_PARVA.
+    PNPABKRS-SIGN   = 'I'.
+    PNPABKRS-OPTION = 'EQ'.
+    APPEND PNPABKRS.
+  ENDIF.
+
+
+  CALL FUNCTION 'CACS_GET_USER_PARAMETER'
+    EXPORTING
+      I_UNAME        = SY-UNAME
+      I_PARID        = 'PBR'
+    IMPORTING
+      E_VALUE        = P_PARVA1
+    EXCEPTIONS
+      NO_ENTRY_FOUND = 1
+      OTHERS         = 2.
+
+  IF  SY-SUBRC        =  0.
+    PNPWERKS-LOW    =  P_PARVA1.
+    PNPWERKS-SIGN   = 'I'.
+    PNPWERKS-OPTION = 'EQ'.
+    APPEND PNPWERKS.
+  ENDIF.
+
+
+  IF   SY-DATUM+6(2)  <  15 .
+    CALL FUNCTION 'MONTH_PLUS_DETERMINE'
+      EXPORTING
+        MONTHS  = '-1'
+        OLDDATE = SY-DATUM
+      IMPORTING
+        NEWDATE = P_BEGDA
+      EXCEPTIONS
+        OTHERS  = 1.
+
+    PNPPABRJ =  P_BEGDA+0(4).
+    PNPPABRP =  P_BEGDA+4(2).
+    PNPTIMRA = 'X'.
+  ELSE.
+    PNPPABRJ =  SY-DATUM+0(4).
+    PNPPABRP =  SY-DATUM+4(2).
+    PNPTIMRA = 'X'.
+  ENDIF.
+
+  GV_B9TXT = '급여결과 저장(급여명세서)'.
+
+ENDFORM.                    " INIT_SELECTION_SCREEN
+*&---------------------------------------------------------------------*
+*&      Form  SAVE_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM SAVE_DATA .
+
+  DATA: IT_HRPY_RGDIR TYPE HRPY_RGDIR OCCURS 0 WITH HEADER LINE,
+        LV_BEGDA      TYPE BEGDA,
+        LV_ENDDA      TYPE ENDDA.
+
+  CALL FUNCTION 'RP_CALC_DATE_IN_INTERVAL'
+    EXPORTING
+      DATE      = SY-DATUM
+      DAYS      = '00'
+      MONTHS    = '01'
+      SIGNUM    = '-'
+      YEARS     = '00'
+    IMPORTING
+      CALC_DATE = LV_BEGDA. "전달의 마지막일
+
+  LV_BEGDA+6(2) = '01'.
+
+  CALL FUNCTION 'RP_LAST_DAY_OF_MONTHS'
+    EXPORTING
+      DAY_IN            = LV_BEGDA
+    IMPORTING
+      LAST_DAY_OF_MONTH = LV_ENDDA.
+
+
+
+  CLEAR : TAB_LINE.
+  DESCRIBE TABLE GT_PERNR LINES TAB_LINE.
+
+*----------------------------------------------------------------------*
+* 급여결과 가져오기 - 병렬처리
+*----------------------------------------------------------------------*
+  LOOP AT GT_PERNR.
+
+    "현재날자기준으로 데이터생성여부판단
+    CLEAR : IT_HRPY_RGDIR, IT_HRPY_RGDIR[].
+    SELECT * INTO CORRESPONDING FIELDS OF TABLE IT_HRPY_RGDIR
+      FROM HRPY_RGDIR
+     WHERE PERNR = GT_PERNR-PERNR
+       AND ( ( FPPER = LV_BEGDA+0(6) AND OCRSN IN ('','0007') )
+        OR PAYDT BETWEEN LV_BEGDA AND LV_ENDDA
+       AND OCRSN IN ('0002','0003','0004') ).
+
+    SORT : IT_HRPY_RGDIR  BY  PAYDT OCRSN PAYID.
+    DELETE ADJACENT DUPLICATES FROM IT_HRPY_RGDIR
+     COMPARING PAYDT OCRSN PAYID.
+    DELETE IT_HRPY_RGDIR WHERE SRTZA <> 'A'.
+
+    LOOP AT IT_HRPY_RGDIR.
+      CLEAR: PNPPABRJ, PNPPABRP, V_YYYYMM, P_OCRSN, P_PAYID, P_PAYDT.
+      IF IT_HRPY_RGDIR-OCRSN IS INITIAL OR IT_HRPY_RGDIR-OCRSN = '0007'.
+        PNPPABRJ = IT_HRPY_RGDIR-FPPER+0(4).
+        PNPPABRP = IT_HRPY_RGDIR-FPPER+4(2).
+        CONCATENATE PNPPABRJ PNPPABRP INTO V_YYYYMM.
+        ITAB-ZSTYPE = 100.
+      ELSE.
+        V_YYYYMM    = IT_HRPY_RGDIR-PAYDT.
+        ITAB-ZSTYPE = 200.
+      ENDIF.
+
+      P_OCRSN       = IT_HRPY_RGDIR-OCRSN.
+      P_PAYID       = IT_HRPY_RGDIR-PAYID.
+      P_PAYDT       = IT_HRPY_RGDIR-PAYDT.
+
+      IF       S1   = 'X'.            "소급분별도
+        LV_RETRO  = 'NOW'.
+      ELSEIF   S2   = 'X'.            "소급분포함
+        LV_RETRO  = 'SUM'.
+      ELSEIF   S3   = 'X'.            "소급분만
+        LV_RETRO  = 'RET'.
+      ENDIF.
+
+      WAIT UNTIL G_PROCS <= P_PROCS.
+
+      TEMP_TEXT = '진행중'.
+      REC_COUNT = REC_COUNT + 1.
+      PCT = REC_COUNT * 100 / TAB_LINE.
+
+      PERFORM PROGRESS_INDICATOR  USING REC_COUNT
+                                        TAB_LINE
+                                        TEMP_TEXT.
+
+      CLEAR GS_RESULT.
+      CALL FUNCTION 'ZHR0004_GET_PAYRESULT'
+        STARTING NEW TASK TASKNAME
+        DESTINATION IN GROUP DEFAULT
+        PERFORMING RECEIVE ON END OF TASK
+        EXPORTING
+          PERNR                 = GT_PERNR-PERNR
+          ABKRS                 = GT_PERNR-ABKRS
+          YYYYMM                = V_YYYYMM
+          OCRSN                 = P_OCRSN
+          PAYID                 = P_PAYID
+          PAYDT                 = P_PAYDT
+          RETRO                 = LV_RETRO
+        EXCEPTIONS
+          SYSTEM_FAILURE        = 1
+          COMMUNICATION_FAILURE = 2
+          RESOURCE_FAILURE      = 3.
+
+
+      CASE SY-SUBRC.
+        WHEN 0.
+          TASKNAME = TASKNAME + 1.
+          SND_JOBS = SND_JOBS + 1.
+          G_PROCS  = G_PROCS + 1.
+        WHEN 1 OR 2.
+        WHEN 3.
+          IF EXCP_FLAG = SPACE.
+            EXCP_FLAG = 'X'.
+            WAIT UNTIL RCV_JOBS >= SND_JOBS UP TO '1' SECONDS.
+          ELSE.
+            WAIT UNTIL RCV_JOBS >= SND_JOBS UP TO '5' SECONDS.
+            IF SY-SUBRC = 0.
+              CLEAR EXCP_FLAG.
+            ELSE.  "No replies
+            ENDIF.
+          ENDIF.
+      ENDCASE.
+
+    ENDLOOP.
+
+    WAIT UNTIL RCV_JOBS >= SND_JOBS.
+
+
+    SORT ITAB ASCENDING BY ORGEH PERNR.
+
+  ENDLOOP.
+
+
+ENDFORM.                    " SAVE_DATA
+*&---------------------------------------------------------------------*
+*&      Form  GET_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM GET_DATA .
+
+  CLEAR: V_YYYYMM.
+
+  IF P_PAYDT IS INITIAL.
+    CONCATENATE PNPPABRJ PNPPABRP INTO V_YYYYMM.
+  ELSE.
+    V_YYYYMM = P_PAYDT(6).
+  ENDIF.
+
+
+  IF       S1 = 'X'.        "소급분별도
+    LV_RETRO = 'NOW'.
+  ELSEIF   S2 = 'X'.        "소급분포함
+    LV_RETRO = 'SUM'.
+  ELSEIF   S3 = 'X'.        "소급분만
+    LV_RETRO = 'RET'.
+  ENDIF.
+
+
+
+  CLEAR : TAB_LINE.
+  DESCRIBE TABLE GT_PERNR LINES TAB_LINE.
+
+*----------------------------------------------------------------------*
+* 급여결과 가져오기 - 병렬처리
+*----------------------------------------------------------------------*
+  LOOP AT GT_PERNR.
+
+    WAIT UNTIL G_PROCS <= P_PROCS.
+
+    TEMP_TEXT = '진행중'.
+    REC_COUNT = REC_COUNT + 1.
+    PCT = REC_COUNT * 100 / TAB_LINE.
+
+    PERFORM PROGRESS_INDICATOR  USING REC_COUNT
+                                      TAB_LINE
+                                      TEMP_TEXT.
+
+    CLEAR GS_RESULT.
+    CALL FUNCTION 'ZHR0004_GET_PAYRESULT'
+      STARTING NEW TASK TASKNAME
+      DESTINATION IN GROUP DEFAULT
+      PERFORMING RECEIVE ON END OF TASK
+      EXPORTING
+        PERNR                 = GT_PERNR-PERNR
+        ABKRS                 = GT_PERNR-ABKRS
+        YYYYMM                = V_YYYYMM
+        OCRSN                 = P_OCRSN
+        PAYID                 = P_PAYID
+        PAYDT                 = P_PAYDT
+        RETRO                 = LV_RETRO
+      EXCEPTIONS
+        SYSTEM_FAILURE        = 1
+        COMMUNICATION_FAILURE = 2
+        RESOURCE_FAILURE      = 3.
+
+
+    CASE SY-SUBRC.
+      WHEN 0.
+        TASKNAME = TASKNAME + 1.
+        SND_JOBS = SND_JOBS + 1.
+        G_PROCS  = G_PROCS + 1.
+      WHEN 1 OR 2.
+      WHEN 3.
+        IF EXCP_FLAG = SPACE.
+          EXCP_FLAG = 'X'.
+          WAIT UNTIL RCV_JOBS >= SND_JOBS UP TO '1' SECONDS.
+        ELSE.
+          WAIT UNTIL RCV_JOBS >= SND_JOBS UP TO '5' SECONDS.
+          IF SY-SUBRC = 0.
+            CLEAR EXCP_FLAG.
+          ELSE.  "No replies
+          ENDIF.
+        ENDIF.
+    ENDCASE.
+
+  ENDLOOP.
+
+  WAIT UNTIL RCV_JOBS >= SND_JOBS.
+
+* 조직코드를 선택했을때 해당 조직 코드 이외에는 삭제
+  IF P_ORGEH IS NOT INITIAL.
+    DELETE ITAB WHERE ORGEH <> P_ORGEH.
+  ENDIF.
+
+  SORT ITAB ASCENDING BY ORGEH PERNR.
+
+
+
+ENDFORM.                    " GET_DATA
+*&---------------------------------------------------------------------*
+*&      Form  PROGRESS_INDICATOR
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM PROGRESS_INDICATOR  USING P_ACT  TYPE I
+                               P_MAX  TYPE I
+                               P_TEXT TYPE ANY.
+  DATA: L_PERCENT   TYPE P,
+        L_PTEXT(80) TYPE C.
+
+  IF P_MAX NE 0.
+    L_PERCENT = P_ACT / P_MAX * 100.
+  ENDIF.
+
+  L_PTEXT(6)    = L_PERCENT.
+  L_PTEXT+6(1)  = '%'.
+  L_PTEXT+9(8) = P_TEXT.
+
+  CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+    EXPORTING
+      PERCENTAGE = L_PERCENT
+      TEXT       = L_PTEXT.
+ENDFORM.                    " progress_indicator
+*&---------------------------------------------------------------------*
+*&      Form  WRITE_TOP
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM WRITE_TOP .
+
+  CLEAR TITLE.
+* 회사명
+*  SELECT SINGLE BUTXT INTO GV_TITLE
+*    FROM T001
+*   WHERE BUKRS = 'AA00'.
+
+  IF P_OCRSN IS INITIAL OR P_OCRSN = '0007' OR P_OCRSN = '0008'.
+    TITLE = TEXT-030.
+  ELSE.
+    TITLE = TEXT-031.
+  ENDIF.
+
+
+  SKIP.
+
+
+  WRITE: /108(38)   SY-ULINE.
+*        237(07)  'DATE : ',
+*        245(10)   SY-DATUM RIGHT-JUSTIFIED.
+
+
+  WRITE: /108      SY-VLINE,
+         111(04)  PNPPABRJ,
+         115(02)  '년',
+         119(02)  PNPPABRP,
+         121(02)  '월',
+         125(20)  TITLE,
+         145      SY-VLINE.
+*         237(07)  'TIME : ',
+*         245(10)  SY-TIMLO RIGHT-JUSTIFIED.
+
+  WRITE: /108(38)   SY-ULINE,
+        237(07)  'PAGE : ',
+        245(11)   SY-PAGNO RIGHT-JUSTIFIED.
+  SKIP.
+  SKIP.
+
+  PERFORM TITLE_FORM.
+
+ENDFORM.                    " WRITE_TOP
+*&---------------------------------------------------------------------*
+*&      Form  TITLE_FORM
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM TITLE_FORM .
+
+  FORMAT  COLOR    COL_HEADING  INTENSIFIED OFF.
+
+  WRITE: /1(255)   SY-ULINE.
+  WRITE: /1        SY-VLINE ,
+          2(38)  '인   사   사   항'          CENTERED,   40 SY-VLINE,
+         41(26)  '근   태   사   항'          CENTERED,   67 SY-VLINE,
+        68(106)  '지      급      항      목' CENTERED,  174 SY-VLINE,
+        175(13)  '비과세 소득'                CENTERED,  188 SY-VLINE,
+        189(66)  '공      제      항      목' CENTERED,  255 SY-VLINE.
+
+  WRITE: /1(255)   SY-ULINE.
+
+
+*----------------------------------------------------------------------*
+* 첫번째 라인
+*----------------------------------------------------------------------*
+  WRITE: /1        SY-VLINE,
+          2(38)   '소  속  부  서'      LEFT-JUSTIFIED,    40 SY-VLINE,
+         41(13)   '기본시간'            RIGHT-JUSTIFIED,
+         54(13)   '연장시간'            RIGHT-JUSTIFIED,   67 SY-VLINE,
+         68(13)   '기본급'              RIGHT-JUSTIFIED,
+         81(13)   '식대수당'            RIGHT-JUSTIFIED,
+         94(13)   '직책선임'            RIGHT-JUSTIFIED,
+        107(13)   '당직수당'            RIGHT-JUSTIFIED,
+        120(13)   '연장수당'            RIGHT-JUSTIFIED,
+        133(13)   '석식대수당'          RIGHT-JUSTIFIED,
+        146(14)   '정기상여 '           RIGHT-JUSTIFIED,
+        160(14)   '기지급금'            RIGHT-JUSTIFIED,  174 SY-VLINE,
+        175(13)   '식대비과세'          CENTERED,         188 SY-VLINE,
+        189(13)   '소득세'              RIGHT-JUSTIFIED,
+        202(13)   '주민세'            RIGHT-JUSTIFIED,
+        215(13)   '국민연금'              RIGHT-JUSTIFIED,
+        228(14)   '건강보험'          RIGHT-JUSTIFIED,
+        242(13)   '기타공제'          RIGHT-JUSTIFIED,
+        255 SY-VLINE.
+
+*----------------------------------------------------------------------*
+* 두번째 라인
+*----------------------------------------------------------------------*
+
+  WRITE: /1        SY-VLINE,
+*          2(10)   '사   번'             LEFT-JUSTIFIED,
+         12(15)   '성   명'             LEFT-JUSTIFIED,
+*         27(13)   '직   책'             LEFT-JUSTIFIED,
+         40 SY-VLINE,
+
+         41(13)   '연차일수'            RIGHT-JUSTIFIED,
+         54(13)   '휴일근무'            RIGHT-JUSTIFIED,   67 SY-VLINE,
+         68(13)   '기본연장급'          RIGHT-JUSTIFIED,
+         81(13)   '현장직무'            RIGHT-JUSTIFIED,
+         94(13)   '해외수당'            RIGHT-JUSTIFIED,
+        107(13)   '조정급'              RIGHT-JUSTIFIED,
+        120(13)   '야간수당'            RIGHT-JUSTIFIED,
+        133(13)   '연차수당'            RIGHT-JUSTIFIED,
+        146(14)   '인정상여'            RIGHT-JUSTIFIED,
+        160(14)   '소급분'              RIGHT-JUSTIFIED,
+        174 SY-VLINE,
+*        175(13)   '연구보조비'          CENTERED,
+        188 SY-VLINE,
+        189(13)   '정산소득세'              RIGHT-JUSTIFIED,
+        202(13)   '정산주민세'            RIGHT-JUSTIFIED,
+        215(13)   '장기요양보험'            RIGHT-JUSTIFIED,
+        228(14)   '고용보험'           RIGHT-JUSTIFIED,
+        242(13)   '공제총액'          RIGHT-JUSTIFIED,  255 SY-VLINE.
+*        242(13)   '통신비공제'          RIGHT-JUSTIFIED,  255 SY-VLINE.
+
+
+*----------------------------------------------------------------------*
+* 세번째 라인
+*----------------------------------------------------------------------*
+
+  WRITE: /1        SY-VLINE,
+*          2(10)   'PERSON ID'                    LEFT-JUSTIFIED,
+         12(15)   ''                    LEFT-JUSTIFIED,
+*         27(13)   '직   급'           LEFT-JUSTIFIED,
+         40 SY-VLINE,
+
+         41(13)   '식대일수'            RIGHT-JUSTIFIED,
+         54(13)   '휴일연장'            RIGHT-JUSTIFIED,   67 SY-VLINE,
+         68(13)   '능력급'              RIGHT-JUSTIFIED,
+         81(13)   '급지수당'            RIGHT-JUSTIFIED,
+         94(13)   '기타수당'            RIGHT-JUSTIFIED,
+        107(13)   '특근수당 '           RIGHT-JUSTIFIED,
+        120(13)   '현장휴일근로'        RIGHT-JUSTIFIED,
+        133(13)   '휴일연장'                   RIGHT-JUSTIFIED,
+        146(14)   '특별 성과급 '        RIGHT-JUSTIFIED,
+        160(14)   '자격증수당'              RIGHT-JUSTIFIED,
+        174 SY-VLINE,
+*        175(13)   '자녀양육비'          CENTERED,
+        188 SY-VLINE,
+*        189(13)   '정산소득세'          RIGHT-JUSTIFIED,
+*        202(13)   '장기요양보험'        RIGHT-JUSTIFIED,
+*        215(13)   '린라운지'            RIGHT-JUSTIFIED,
+*        228(14)   '경조비'              RIGHT-JUSTIFIED,
+*        242(13)   '공제총액'            RIGHT-JUSTIFIED,
+        255 SY-VLINE.
+
+*----------------------------------------------------------------------*
+* 네번째 라인
+*----------------------------------------------------------------------*
+
+  WRITE: /1        SY-VLINE,
+*         2(10)    '입사일자'            LEFT-JUSTIFIED,
+         12(15)   '퇴사일자'            LEFT-JUSTIFIED,
+         27(13)   '시   급'             LEFT-JUSTIFIED,    40 SY-VLINE,
+         41(13)   '야간시간'            RIGHT-JUSTIFIED,
+         54(13)   '휴일야간'            RIGHT-JUSTIFIED,   67 SY-VLINE,
+         68(13)   ' '                   RIGHT-JUSTIFIED,
+*         81(13)   '자격증수당'          RIGHT-JUSTIFIED,
+*         94(13)   '기타수당'            RIGHT-JUSTIFIED,
+*        107(13)   '조정급'              RIGHT-JUSTIFIED,
+*        120(13)   '휴일연장'            RIGHT-JUSTIFIED,
+*        133(13)   '연차수당'            RIGHT-JUSTIFIED,
+*        146(14)   '인정상여'            RIGHT-JUSTIFIED,
+        160(14)   '지급총액'            RIGHT-JUSTIFIED,  174 SY-VLINE,
+*        175(13)   '비과세합계'          CENTERED,
+        188 SY-VLINE,
+*        189(13)   '정산주민세'          RIGHT-JUSTIFIED,
+*        202(13)   '고용보험'            RIGHT-JUSTIFIED,
+*        215(13)   '통근버스'            RIGHT-JUSTIFIED,
+*        228(14)   '기타공제'            RIGHT-JUSTIFIED,
+        242(13)   '차인지급액'          RIGHT-JUSTIFIED,  255 SY-VLINE.
+
+
+  WRITE: /1(255)  SY-ULINE.
+
+  FORMAT RESET.
+ENDFORM.                    " TITLE_FORM
+*&---------------------------------------------------------------------*
+*&      Form  WRITE
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM WRITE .
+* 조직명 급호 SORT
+
+*  SORT ITAB BY LEBEL1 LEBEL2 ORGEH PERNR ASCENDING.
+
+  "Write 출력용 인터널 테이블에 데이터 이동
+  CLEAR: JTAB, JTAB[].
+
+  LOOP AT ITAB.
+
+    MOVE-CORRESPONDING ITAB TO JTAB.
+
+    IF JTAB-P27 IS NOT INITIAL.
+      JTAB-P25 = JTAB-P27.
+    ENDIF.
+
+
+* 대장 출력시  퇴직정산분과 연말정산분 합산 처리
+    JTAB-D01_1  =  JTAB-D01_1 +  JTAB-D01_9.
+    JTAB-D02_1  =  JTAB-D02_1 +  JTAB-D02_9.
+
+* 각종 공제 항목을 기타공제(JTAB-D15)로 합산
+    ADD JTAB-D16  TO JTAB-D15. "학자금대출
+    ADD JTAB-D08  TO JTAB-D15. "주차비
+    ADD JTAB-D12  TO JTAB-D15. "복지월상환
+    ADD JTAB-D09  TO JTAB-D15. "구내식당
+    ADD JTAB-D13  TO JTAB-D15. "복직대출이자
+    ADD JTAB-D10  TO JTAB-D15. "린라운지
+    ADD JTAB-D14  TO JTAB-D15. "경조비
+    ADD JTAB-D11  TO JTAB-D15. "통근버스
+    ADD JTAB-D17  TO JTAB-D15. "통신비
+
+    APPEND JTAB.
+    CLEAR JTAB.
+  ENDLOOP.
+
+
+  FORMAT INTENSIFIED OFF.
+
+  LOOP AT JTAB.
+
+    ADD 1 TO COUNT1.          "부서인원
+    ADD 1 TO COUNT2.          "총합인원
+    ADD 1 TO COUNT3.
+
+    IF     PRINT_CNT  >=   10.      "10이상 출력시 새페이지
+      NEW-PAGE.
+      CLEAR PRINT_CNT.
+    ENDIF.
+
+    PERFORM PERNR_WRITE.     "개인별 급여사항 프린트
+
+    IF      PRINT_CNT       >= 10.     "10이상 출력시 새페이지
+      MOVE PRINT_CNT  TO   PRINT_CNT1.
+      NEW-PAGE.
+      CLEAR PRINT_CNT.
+    ELSE.
+      MOVE PRINT_CNT  TO   PRINT_CNT1.
+    ENDIF.
+
+    ORGTX = JTAB-ORGEH_TEXT.
+    AT END OF ORGEH.
+      SUM.
+      PERFORM SUBTOTAL_DATA.
+    ENDAT.
+
+
+    IF      PRINT_CNT >= 10.     "10이상 출력시 새페이지
+      NEW-PAGE.
+      CLEAR PRINT_CNT.
+    ENDIF.
+
+    AT  LAST.
+      SUM.
+      PERFORM TOTAL_DATA.       "총합계 출력
+    ENDAT.
+
+    CLEAR   JTAB.
+
+  ENDLOOP.
+
+ENDFORM.                    " WRITE
+*&---------------------------------------------------------------------*
+*&      Form  PERNR_WRITE
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM PERNR_WRITE .
+
+  WRITE:/1        SY-VLINE,
+        2(36)     JTAB-ORGEH_TEXT,
+        40        SY-VLINE.
+  SET LEFT SCROLL-BOUNDARY.
+
+  COL_GUBUN = 0.
+  TIT_GUBUN = 1.
+
+*------------------
+* 개인별 DATA 출력
+*------------------
+  PERFORM DATA_WRITE_FORM.
+
+  ADD 1 TO PRINT_CNT.
+
+ENDFORM.                    " PERNR_WRITE
+*&---------------------------------------------------------------------*
+*&      Form  DATA_WRITE_FORM
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM DATA_WRITE_FORM .
+
+
+*----------------------------------------------------------------------*
+* 첫번째 라인 금액
+*----------------------------------------------------------------------*
+
+*------------------
+* 지급 금액
+*------------------
+
+  WRITE:
+    41(13) JTAB-T01     RIGHT-JUSTIFIED COLOR = COL_GUBUN,
+    54(13) JTAB-T02     RIGHT-JUSTIFIED COLOR = COL_GUBUN, 67 SY-VLINE,
+    68(13) JTAB-P01     CURRENCY 'KRW' COLOR = COL_GUBUN, "기본급
+    81(13) JTAB-P05     CURRENCY 'KRW' COLOR = COL_GUBUN, "식대수당
+    94(13) JTAB-P09     CURRENCY 'KRW' COLOR = COL_GUBUN, "직책선임
+   107(13) JTAB-P13     CURRENCY 'KRW' COLOR = COL_GUBUN, "당직수당
+   120(13) JTAB-P17     CURRENCY 'KRW' COLOR = COL_GUBUN, "연장근무
+   133(13) JTAB-P21     CURRENCY 'KRW' COLOR = COL_GUBUN, "석식대수당
+   146(14) JTAB-P23     CURRENCY 'KRW' COLOR = COL_GUBUN, "정기상여
+   160(14) JTAB-P30     CURRENCY 'KRW' COLOR = COL_GUBUN, "기지급금
+                                                          174 SY-VLINE,
+
+*------------------
+*  비과세
+*------------------
+    175(13) JTAB-B01    CURRENCY 'KRW' COLOR = COL_GUBUN, 188 SY-VLINE,
+*------------------
+*  공제항목
+*------------------
+   189(13) JTAB-D01     CURRENCY 'KRW' COLOR = COL_GUBUN, "소득세
+   202(13) JTAB-D02     CURRENCY 'KRW' COLOR = COL_GUBUN, "주민세
+   215(13) JTAB-D03     CURRENCY 'KRW' COLOR = COL_GUBUN, "국민연금
+   228(14) JTAB-D04_2   CURRENCY 'KRW' COLOR = COL_GUBUN, "건강보험
+   242(13) JTAB-D15     CURRENCY 'KRW' COLOR = COL_GUBUN,  "기타공제
+   255 SY-VLINE.
+
+
+*----------------------------------------------------------------------*
+* 두번째 라인 금액
+*----------------------------------------------------------------------*
+  IF   TIT_GUBUN        =           1.
+
+    WRITE: /1        SY-VLINE,
+*            2(10)    JTAB-PERNR               COLOR = COL_GUBUN,
+*            3(10)    JTAB-PERSONID_EXT     COLOR = COL_GUBUN,
+           12(15)    JTAB-ENAME               COLOR = COL_GUBUN.
+*           27(13)    JTAB-ZZPSGRPTX           COLOR = COL_GUBUN.
+
+  ELSEIF   TIT_GUBUN    =           2.
+
+    WRITE: /1        SY-VLINE,
+            2(25)    ' '            COLOR = COL_GUBUN,
+           27(04)    COUNT1         COLOR = COL_GUBUN,
+           31 ' 명        '         COLOR = COL_GUBUN.
+  ELSEIF  TIT_GUBUN     =           9.
+
+    WRITE: /1        SY-VLINE,
+            2(25)    ' '            COLOR = COL_GUBUN,
+           27(04)    COUNT2         COLOR = COL_GUBUN,
+           31 ' 명        '         COLOR = COL_GUBUN.
+  ENDIF.
+
+  WRITE:  40 SY-VLINE.
+
+  SET LEFT SCROLL-BOUNDARY.
+
+*------------------
+* 지급 금액
+*------------------
+
+  WRITE:
+   41(13) JTAB-T07     RIGHT-JUSTIFIED COLOR = COL_GUBUN,
+   54(13) JTAB-T04     RIGHT-JUSTIFIED COLOR = COL_GUBUN, 67 SY-VLINE,
+   68(13) JTAB-P02     CURRENCY 'KRW' COLOR = COL_GUBUN, "기본연장급
+   81(13) JTAB-P06     CURRENCY 'KRW' COLOR = COL_GUBUN, "현장직무수당
+   94(13) JTAB-P10     CURRENCY 'KRW' COLOR = COL_GUBUN, "해외수당
+  107(13) JTAB-P16     CURRENCY 'KRW' COLOR = COL_GUBUN, "조정급
+  120(13) JTAB-P18     CURRENCY 'KRW' COLOR = COL_GUBUN, "야근수당
+  133(13) JTAB-P22     CURRENCY 'KRW' COLOR = COL_GUBUN, "연차수당
+  146(14) JTAB-P31     CURRENCY 'KRW' COLOR = COL_GUBUN, "인정상여
+  160(14) JTAB-R_TOTAL CURRENCY 'KRW' COLOR = COL_GUBUN, "소급분
+  174 SY-VLINE,
+
+*------------------
+*  비과세
+*------------------
+*  175(13)  JTAB-B03    CURRENCY 'KRW' COLOR = COL_GUBUN, " 연구보조비
+  188 SY-VLINE,
+*------------------
+*  공제항목
+*------------------
+  189(13) JTAB-D01_1   CURRENCY 'KRW' COLOR = COL_GUBUN, "소득세정산
+  202(13) JTAB-D02_1   CURRENCY 'KRW' COLOR = COL_GUBUN, "정산주민세
+  215(13) JTAB-D05_2   CURRENCY 'KRW' COLOR = COL_GUBUN, "장기요양보험
+  228(14) JTAB-D06_2   CURRENCY 'KRW' COLOR = COL_GUBUN, "고용보험합계
+  242(13) JTAB-D_TOTAL CURRENCY 'KRW' COLOR = COL_GUBUN, "공제총액
+                                                          255 SY-VLINE.
+
+*----------------------------------------------------------------------*
+* 세번째 라인 금액
+*----------------------------------------------------------------------*
+  IF TIT_GUBUN = 1.
+
+    WRITE: /1 SY-VLINE.
+
+*   2(10)    JTAB-PERSONID_EXT     COLOR = COL_GUBUN.
+
+    IF P_OCRSN = '0007'.
+      WRITE : 2(10) '급여전정산'  COLOR = COL_GUBUN.
+    ELSEIF P_OCRSN = '0008'.
+      WRITE : 2(10) '급여후정산'  COLOR = COL_GUBUN.
+    ELSE.
+      WRITE : '  '                COLOR = COL_GUBUN.
+    ENDIF.
+
+    WRITE  : 12(15)    '  '                              COLOR = COL_GUBUN.
+*                  27(13)   JTAB-ZZCALTLTX       COLOR = COL_GUBUN.
+
+  ELSEIF   TIT_GUBUN    =           2.
+    WRITE: /1 SY-VLINE,
+            2(25)    ' '    COLOR = COL_GUBUN,
+           27(11)    ' '    COLOR = COL_GUBUN,
+           38(02)    ' '    COLOR = COL_GUBUN.
+
+  ELSEIF  TIT_GUBUN     =           9.
+    WRITE: /1 SY-VLINE,
+            2(25)    ' '    COLOR = COL_GUBUN,
+           27(11)    ' '    COLOR = COL_GUBUN,
+           38(02)    ' '    COLOR = COL_GUBUN.
+  ENDIF.
+
+  WRITE:  40 SY-VLINE.
+
+  SET LEFT SCROLL-BOUNDARY.
+
+*------------------
+* 지급 금액
+*------------------
+
+
+  WRITE:
+  41(13) JTAB-T08     RIGHT-JUSTIFIED COLOR = COL_GUBUN,
+  54(13) JTAB-T05     RIGHT-JUSTIFIED COLOR = COL_GUBUN, 67 SY-VLINE,
+  68(13) JTAB-P03     CURRENCY 'KRW' COLOR = COL_GUBUN, "능력급
+  81(13) JTAB-P07     CURRENCY 'KRW' COLOR = COL_GUBUN, "급지수당
+  94(13) JTAB-P12     CURRENCY 'KRW' COLOR = COL_GUBUN, "기타수당
+ 107(13) JTAB-P15     CURRENCY 'KRW' COLOR = COL_GUBUN, "특근수당
+ 120(13) JTAB-P19     CURRENCY 'KRW' COLOR = COL_GUBUN, "현장휴일근로수당
+ 133(13) JTAB-P20     CURRENCY 'KRW' COLOR = COL_GUBUN, "휴일연장
+ 146(14) JTAB-P25     CURRENCY 'KRW' COLOR = COL_GUBUN, "특별 성과급
+ 160(14) JTAB-P08     CURRENCY 'KRW' COLOR = COL_GUBUN, "자격증수당
+                                                        174 SY-VLINE,
+*------------------
+*  비과세
+*------------------
+*  175(13) JTAB-B05   CURRENCY 'KRW' COLOR = COL_GUBUN,
+  188 SY-VLINE,
+
+*------------------
+*  공제항목
+*------------------
+*  189(13)
+*  202(13)
+*  215(13) JTAB-D10     CURRENCY 'KRW' COLOR = COL_GUBUN, "린라운지
+*  228(14) JTAB-D14     CURRENCY 'KRW' COLOR = COL_GUBUN, "경조비
+*  242(13) JTAB-D_TOTAL CURRENCY 'KRW' COLOR = COL_GUBUN, "공제총액
+                                                          255 SY-VLINE.
+
+*----------------------------------------------------------------------*
+* 네번째 라인 금액
+*----------------------------------------------------------------------*
+  IF   TIT_GUBUN = 1.
+    WRITE:
+      /1 SY-VLINE.
+*       2(10) JTAB-HRDAT USING EDIT MASK '________' COLOR = COL_GUBUN.  "입사일
+
+    IF JTAB-FRDAT IS NOT INITIAL.
+      WRITE:
+      12(15) JTAB-FRDAT USING EDIT MASK '________' COLOR = COL_GUBUN.
+    ENDIF.
+
+    WRITE:
+    27(13) JTAB-BET01 CURRENCY 'KRW' LEFT-JUSTIFIED COLOR = COL_GUBUN.
+
+  ELSEIF TIT_GUBUN = 2.
+    WRITE: /1        SY-VLINE,
+            2(25)    ' '         COLOR = COL_GUBUN,
+           27(04)    ' '         COLOR = COL_GUBUN,
+           31(09)    ' '         COLOR = COL_GUBUN.
+  ELSEIF  TIT_GUBUN = 9.
+    WRITE: /1        SY-VLINE,
+            2(25)    ' '         COLOR = COL_GUBUN,
+           27(04)    ' '         COLOR = COL_GUBUN,
+           31(09)    ' '         COLOR = COL_GUBUN.
+  ENDIF.
+
+  WRITE:  40 SY-VLINE.
+  SET LEFT SCROLL-BOUNDARY.
+
+*------------------
+* 지급 금액
+*------------------
+  WRITE:
+  41(13) JTAB-T03 RIGHT-JUSTIFIED COLOR = COL_GUBUN,
+  54(13) JTAB-T06 RIGHT-JUSTIFIED COLOR = COL_GUBUN, 67 SY-VLINE,
+*  68(13) JTAB-P04     CURRENCY 'KRW' COLOR = COL_GUBUN, "
+*  81(13) JTAB-P08     CURRENCY 'KRW' COLOR = COL_GUBUN, "자격증수당
+*  94(13) JTAB-P12     CURRENCY 'KRW' COLOR = COL_GUBUN, "기타수당
+* 107(13) JTAB-P16     CURRENCY 'KRW' COLOR = COL_GUBUN, "조정급
+* 120(13) JTAB-P20     CURRENCY 'KRW' COLOR = COL_GUBUN, "휴일연장
+* 133(13) JTAB-P22     CURRENCY 'KRW' COLOR = COL_GUBUN, "연차수당
+
+ 160(14) JTAB-P_TOTAL CURRENCY 'KRW' COLOR = COL_GUBUN, "지급총액
+                                                       174 SY-VLINE,
+*------------------
+* 비과세
+*------------------
+*  175(13) JTAB-B10  CURRENCY 'KRW' COLOR = COL_GUBUN,
+  188 SY-VLINE,
+*------------------
+* 공제 금액
+*------------------
+*  189(13)
+*  202(13)
+*  215(13) JTAB-D11     CURRENCY 'KRW' COLOR = COL_GUBUN, "통근버스
+*  228(14) JTAB-D15     CURRENCY 'KRW' COLOR = COL_GUBUN, "기타공제
+  242(13) JTAB-TOTAL   CURRENCY 'KRW' COLOR = COL_GUBUN,  "공제총액
+  255 SY-VLINE.
+
+  WRITE: /1(255)  SY-ULINE.
+
+ENDFORM.                    " DATA_WRITE_FORM
+*&---------------------------------------------------------------------*
+*&      Form  TOTAL_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM TOTAL_DATA .
+
+*  FORMAT  COLOR    COL_TOTAL   INTENSIFIED on.
+
+  COL_GUBUN = 7.
+  TIT_GUBUN = 9.
+
+  WRITE: /1       SY-VLINE,
+          2(23)   '     '      COLOR = COL_GUBUN,
+         25(15)   '합     계'  COLOR = COL_GUBUN, 40 SY-VLINE.
+
+  SET LEFT SCROLL-BOUNDARY.
+
+  PERFORM DATA_WRITE_FORM.
+
+*  FORMAT INTENSIFIED OFF.
+ENDFORM.                    " TOTAL_DATA
+*&---------------------------------------------------------------------*
+*&      Form  SUBTOTAL_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM SUBTOTAL_DATA .
+
+  IF PRINT_CNT1 >= 10.       "10이상 출력시 새페이지
+    NEW-PAGE.
+    CLEAR  PRINT_CNT1.
+  ENDIF.
+
+*  FORMAT  COLOR    COL_GROUP   INTENSIFIED ON.
+
+  COL_GUBUN = 3.
+  TIT_GUBUN = 2.
+
+  WRITE: /1  SY-VLINE,
+          2(23)   ORGTX        COLOR = COL_GUBUN,
+         25(15)   '소     계'  COLOR = COL_GUBUN,  40 SY-VLINE.
+
+  SET LEFT SCROLL-BOUNDARY.
+
+*  COL_GUBUN = 3.
+*  TIT_GUBUN = 2.
+  PERFORM DATA_WRITE_FORM.
+  ADD 1 TO PRINT_CNT.
+  CLEAR: COUNT1, ORGTX.
+
+*  FORMAT INTENSIFIED OFF.
+ENDFORM.                    " SUBTOTAL_DATA
+
+*&---------------------------------------------------------------------*
+*&      Form  SAVE_TABLE
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM SAVE_TABLE.
+  DATA: LV_MSG(60),
+        LV_SCNT TYPE I.
+  CLEAR GT_P0001[].
+  LOOP AT ITAB.
+    MOVE-CORRESPONDING ITAB TO GT_P0001.
+
+    GT_P0001-PAYDT  = ITAB-PAYDT.
+    GT_P0001-ZSTYPE = P_ZSTYPE.
+
+*** GT_P0001-ZSTYPE = ITAB-ZSTYPE.
+
+    IF P_PAYDT IS NOT INITIAL AND
+       P_OCRSN IS NOT INITIAL.
+      GT_P0001-OCRSN  = P_OCRSN.
+      GT_P0001-PAYID  = P_PAYID.
+    ENDIF.
+
+    GT_P0001-ZPAYDT = P_ZPAYDT.
+*    GT_P0001-PABRJ = PNPPABRJ.
+*    GT_P0001-PABRP = PNPPABRP.
+*
+*    IF PNPPABRJ IS INITIAL AND
+*       PNPPABRP IS INITIAL.
+*
+*      GT_P0001-PABRJ = ITAB-PAYDT(4).
+*      GT_P0001-PABRP = ITAB-PAYDT+4(2).
+*    ENDIF.
+
+
+    GT_P0001-PABRJ = ITAB-FPPER+0(4).
+    GT_P0001-PABRP = ITAB-FPPER+4(2).
+
+    IF GT_P0001-PABRJ IS INITIAL AND
+       GT_P0001-PABRP IS INITIAL.
+
+      GT_P0001-PABRJ = ITAB-PAYDT+0(4).
+      GT_P0001-PABRP = ITAB-PAYDT+4(2).
+    ENDIF.
+
+    IF GT_P0001-ZSTYPE <> '100'. " 정기급여아니면 근무시간 및 근무일 출력안함.
+      CLEAR : GT_P0001-H99,GT_P0001-H00.
+    ENDIF.
+
+    GT_P0001-WAERS = 'KRW'.
+    IF P_TEXT IS NOT INITIAL.
+      GT_P0001-LIST_TXT = P_TEXT.
+    ENDIF.
+    APPEND GT_P0001.
+    CLEAR  GT_P0001.
+  ENDLOOP.
+
+  IF GT_P0001[] IS NOT INITIAL.
+*   기존에 저장했던 내역을 삭제
+    READ TABLE GT_P0001 INDEX 1.
+
+    IF P_DEL = 'X'.
+      DELETE FROM ZHRT0100 WHERE PAYDT = GT_P0001-PAYDT
+                             AND PAYID = GT_P0001-PAYID
+                             AND OCRSN = GT_P0001-OCRSN.
+    ENDIF.
+    MODIFY ZHRT0100  FROM TABLE GT_P0001.
+    LV_SCNT = SY-DBCNT.
+    IF  SY-SUBRC = 0.
+      MESSAGE '저장 성공'     TYPE 'S'.
+      LV_MSG = '급여결과 ' && LV_SCNT && '건이 저장되었습니다'.
+
+*      CALL FUNCTION 'POPUP_TO_INFORM'
+*        EXPORTING
+*          titel         = 'POPUP MESSAGE'
+*          txt1          = '저장되었습니다.'
+*          txt2          = ''.
+      CALL FUNCTION 'POPUP_TO_DISPLAY_TEXT'
+        EXPORTING
+          TITEL        = 'POPUP MESSAGE'
+          TEXTLINE1    = '급여결과'
+          TEXTLINE2    = LV_SCNT && ' 건이 저장되었습니다'
+          START_COLUMN = 25
+          START_ROW    = 6.
+    ELSE.
+      MESSAGE '저장실패'      TYPE 'S' DISPLAY LIKE 'E'.
+    ENDIF.
+  ELSE.
+    MESSAGE '값이 없습니다'  TYPE 'S' DISPLAY LIKE 'E'.
+  ENDIF.
+
+ENDFORM.                    " SAVE_TABLE
+*&---------------------------------------------------------------------*
+*&      Form  GET_PAY_DATE
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_V_YYYYMM  text
+*----------------------------------------------------------------------*
+FORM GET_PAY_DATE  USING    P_PERNR
+                            P_YYYYMM
+                CHANGING    P_PAYDT.
+
+  DATA: LV_BEGDA TYPE BEGDA,
+        LV_ENDDA TYPE ENDDA.
+
+*조회 시작일이 속한 월의 첫번째 일자
+  CONCATENATE P_YYYYMM(6) '01' INTO LV_BEGDA.
+
+*조회 종료일이 속한 월의 마지막 일자
+  CLEAR: LV_ENDDA.
+  CALL FUNCTION 'RP_LAST_DAY_OF_MONTHS'
+    EXPORTING
+      DAY_IN            = LV_BEGDA
+    IMPORTING
+      LAST_DAY_OF_MONTH = LV_ENDDA
+    EXCEPTIONS
+      DAY_IN_NO_DATE    = 1
+      OTHERS            = 2.
+
+ENDFORM.                    " GET_PAY_DATE
+*&---------------------------------------------------------------------*
+*&      Form  GET_PERNR
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM GET_PERNR .
+
+*  GR_PERNR-LOW    = PERNR-PERNR.
+*  GR_PERNR-SIGN   = 'I'.
+*  GR_PERNR-OPTION = 'EQ'.
+*  APPEND GR_PERNR.
+*  CLEAR GR_PERNR.
+
+  GT_PERNR-PERNR   = PERNR-PERNR.
+  GT_PERNR-ABKRS   = PERNR-ABKRS.
+  APPEND GT_PERNR.
+  CLEAR  GT_PERNR.
+
+
+ENDFORM.                    " GET_PERNR
+*&---------------------------------------------------------------------*
+*&      Form  RECEIVE
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM RECEIVE USING TASKNAME.
+
+  CLEAR GS_RESULT.
+  RECEIVE RESULTS FROM FUNCTION 'ZHR0004_GET_PAYRESULT'
+    IMPORTING
+      RESULT                = GS_RESULT
+    EXCEPTIONS
+      SYSTEM_FAILURE        = 1
+      COMMUNICATION_FAILURE = 2
+      RESOURCE_FAILURE      = 3.
+
+  RCV_JOBS = RCV_JOBS + 1.  "Receiving data
+  G_PROCS = G_PROCS - 1.
+
+  IF SY-SUBRC NE 0.
+* Handle communication and system failure
+  ELSE.
+    IF GS_RESULT-PERNR IS NOT INITIAL.
+
+      "Write 출력 시 Overflow 덤프로 인해 Clear
+      CLEAR GS_RESULT-BSGRD.
+
+      MOVE-CORRESPONDING GS_RESULT TO ITAB.
+
+**  로직 원복 2026.09.01 by seppin ljs
+*** 급여결과 저장 당시 WBS 조회 및 WBS명 조회 2026.08.31 by seppin ljs
+**      CLEAR: ITAB-POSNR,
+**             ITAB-COOBJ_TEXT1.
+**
+**      SELECT SINGLE POSNR
+**        INTO ITAB-POSNR
+**        FROM ZHRT0100
+**       WHERE PERNR = GS_RESULT-PERNR
+**         AND FPPER = GS_RESULT-FPPER
+**         AND PAYDT = GS_RESULT-PAYDT
+**         AND OCRSN = GS_RESULT-OCRSN
+**         AND PAYID = GS_RESULT-PAYID.
+**
+**      IF SY-SUBRC = 0 AND ITAB-POSNR IS NOT INITIAL.
+**
+**        SELECT SINGLE POST1
+**          INTO ITAB-COOBJ_TEXT1
+**          FROM PRPS
+**         WHERE POSID = ITAB-POSNR.
+**
+**      ENDIF.
+
+
+*     직책명 추가
+      SELECT SINGLE ZZPSGRPTX INTO ITAB-POSNAME
+        FROM ZHRT0003
+       WHERE SPRAS = '3'
+         AND ZZPSGRP IN ( SELECT ZZPSGRP FROM PA0001
+                                        WHERE PERNR = ITAB-PERNR
+                                          AND ENDDA = '99991231' ).
+
+      APPEND ITAB.
+      CLEAR ITAB.
+    ENDIF.
+  ENDIF.
+
+ENDFORM.                    " RECEIVE
+*&---------------------------------------------------------------------*
+*&      Form  EDIT_ABKRS
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM EDIT_ABKRS .
+
+  DATA: LT_PROFILE LIKE TABLE OF BAPIPROF,
+        LT_RETURN  LIKE TABLE OF BAPIRET2.
+
+  REFRESH: LT_PROFILE[], LT_RETURN[].
+
+  "실행 대상자 권한 목록 확인
+  CALL FUNCTION 'BAPI_USER_GET_DETAIL'
+    EXPORTING
+      USERNAME      = SY-UNAME
+      CACHE_RESULTS = 'X'
+    TABLES
+      PROFILES      = LT_PROFILE[]
+      RETURN        = LT_RETURN[].
+
+  CHECK LT_PROFILE[] IS NOT INITIAL.
+
+  "권한 목록 중 'ECP 담당자 권한'이 없을 경우 급여 영역 편집 불가
+  READ TABLE LT_PROFILE ASSIGNING FIELD-SYMBOL(<FS_PROFILE>) WITH KEY BAPIPROF = 'T-G7520019'.
+  IF SY-SUBRC NE 0.
+    LOOP AT SCREEN.
+      CASE SCREEN-NAME.
+        WHEN 'PNPXABKR' OR 'PNPABKRS-LOW'.
+          SCREEN-INPUT = 0.
+      ENDCASE.
+
+      MODIFY SCREEN.
+    ENDLOOP.
+  ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  MODIFY_SELECTION_SCREEN
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM MODIFY_SELECTION_SCREEN .
+
+  IF P_HIS = 'X'.
+    GV_B9TXT = '저장결과 조회조건(필수)'.
+    R1 = 'X'.
+    CLEAR: R2,
+           P9,
+           P10.
+  ELSE.
+    GV_B9TXT = '급여결과 저장(급여명세서)'.
+  ENDIF.
+
+  LOOP AT SCREEN.
+    IF P_HIS = 'X'.
+      CASE SCREEN-GROUP1.
+        WHEN 'OUT'.
+          SCREEN-ACTIVE = 0.
+        WHEN 'RET'.
+          SCREEN-ACTIVE = 0.
+        WHEN 'SAV'.
+          SCREEN-ACTIVE = 0.
+      ENDCASE.
+
+    ELSE.
+      CASE SCREEN-GROUP1.
+        WHEN 'OUT' OR 'RET' OR 'SAV'.
+          SCREEN-ACTIVE = 1.
+      ENDCASE.
+    ENDIF.
+    MODIFY SCREEN.
+  ENDLOOP.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  GET_SAVED_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+* ZHRT0100에 저장된 급여결과 조회   2026.09.02 BY SEPPIN LJS
+* 급여기간, 급여유형, 실지급일 기준으로 저장결과를 조회하고
+* 실지급일 기준 인사정보를 조회하여 ALV 출력 데이터를 구성
+*----------------------------------------------------------------------*
+FORM GET_SAVED_DATA .
+
+  DATA: LT_ZHRT0100 TYPE TABLE OF ZHRT0100,
+        LS_ZHRT0100 TYPE ZHRT0100,
+        LS_BASIC    TYPE ZHRS0004,
+        LV_PERNR    TYPE PERNR_D.
+
+  CLEAR: ITAB, ITAB[].
+  CLEAR: LT_ZHRT0100, LT_ZHRT0100[].
+
+* 대상 사원 확인
+  CHECK GT_PERNR[] IS NOT INITIAL.
+
+  SELECT *
+    INTO TABLE LT_ZHRT0100
+    FROM ZHRT0100
+    FOR ALL ENTRIES IN GT_PERNR
+   WHERE PERNR  = GT_PERNR-PERNR
+     AND PABRJ  = PNPPABRJ
+     AND PABRP  = PNPPABRP
+     AND ZSTYPE = P_ZSTYPE
+     AND ZPAYDT = P_ZPAYDT.
+
+* 비정기상여 조회조건
+  "급여사유
+  IF P_OCRSN IS NOT INITIAL.
+    DELETE LT_ZHRT0100
+     WHERE OCRSN <> P_OCRSN.
+  ENDIF.
+
+  "지급일자
+  IF P_PAYDT IS NOT INITIAL.
+    DELETE LT_ZHRT0100
+     WHERE PAYDT <> P_PAYDT.
+  ENDIF.
+
+  "급여계산 식별자
+  IF P_PAYID IS NOT INITIAL.
+    DELETE LT_ZHRT0100
+     WHERE PAYID <> P_PAYID.
+  ENDIF.
+
+  LOOP AT LT_ZHRT0100 INTO LS_ZHRT0100.
+
+    CLEAR: ITAB, LS_BASIC, LV_PERNR.
+
+    MOVE-CORRESPONDING LS_ZHRT0100 TO ITAB.
+
+* 인사정보 가져오기
+    LV_PERNR = LS_ZHRT0100-PERNR.
+
+    CALL FUNCTION 'ZHR0002_GET_BASIC_DATA'
+      EXPORTING
+        IM_DATE  = P_ZPAYDT    "실지급일
+        IM_PERNR = LV_PERNR
+      IMPORTING
+        EX_STRU  = LS_BASIC.
+
+    MOVE-CORRESPONDING LS_BASIC TO ITAB.
+
+* 실지급일 기준 직책명 조회
+    SELECT SINGLE ZZPSGRPTX
+      INTO ITAB-POSNAME
+      FROM ZHRT0003
+     WHERE SPRAS = '3'
+       AND ZZPSGRP IN ( SELECT ZZPSGRP
+                          FROM PA0001
+                         WHERE PERNR = ITAB-PERNR
+                           AND BEGDA <= P_ZPAYDT
+                           AND ENDDA >= P_ZPAYDT ).
+
+    APPEND ITAB.
+
+  ENDLOOP.
+
+  SORT ITAB ASCENDING BY ORGEH PERNR.
+
+ENDFORM.

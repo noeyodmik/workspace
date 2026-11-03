@@ -1,0 +1,127 @@
+FUNCTION ZHR0004_PRINT_PAYSLIP_PDF_B3AF.
+*"----------------------------------------------------------------------
+*"*"로컬 인터페이스:
+*"  IMPORTING
+*"     VALUE(IV_ZSTYPE) TYPE  ZSTYPE
+*"     VALUE(IV_ZSIGN) TYPE  CHAR01 OPTIONAL
+*"     VALUE(IV_YEAR) TYPE  CHAR04 OPTIONAL
+*"  EXPORTING
+*"     VALUE(E_PDF_DATA) TYPE  XSTRING
+*"     VALUE(E_PDF_FSIZE) TYPE  I
+*"     VALUE(EV_PDF) TYPE  XSTRING
+*"  TABLES
+*"      IR_PERNR STRUCTURE  SEL_PERNR OPTIONAL
+*"      IR_PAYDT STRUCTURE  SEL_DATE OPTIONAL
+*"      IR_ORGEH STRUCTURE  CCHRS_ORGEH_RANGE OPTIONAL
+*"----------------------------------------------------------------------
+  DATA: LV_AF_FM_NAME   TYPE RS38L_FNAM,
+        LS_OUTPUTPARAMS TYPE SFPOUTPUTPARAMS,
+        LS_DOCPARAMS    TYPE SFPDOCPARAMS,
+        LS_FORMOUTPUT   TYPE FPFORMOUTPUT.
+
+  DATA: LO_PDF_MERGER  TYPE REF TO CL_RSPO_PDF_MERGE,
+        LV_MERGE_RC    TYPE I,
+        LS_PAYSLIP     TYPE ZHRS0027_B3,
+        LT_PAYSLIP_ONE TYPE TABLE OF ZHRS0027_B3.
+
+  DATA: LT_PAYSLIP_B3 TYPE TABLE OF ZHRS0027_B3 WITH HEADER LINE,
+        LV_PAYCNT     TYPE I.
+
+  CLEAR: E_PDF_DATA, E_PDF_FSIZE, EV_PDF,
+         LT_PAYSLIP_B3, LT_PAYSLIP_B3[], LV_PAYCNT.
+
+  " 급여명세서 데이터 조회 및 가공
+  PERFORM GET_PAYSLIP_DATA_B3 TABLES IR_PERNR
+                                     IR_PAYDT
+                                     IR_ORGEH
+                                     LT_PAYSLIP_B3
+                               USING IV_ZSTYPE
+                                     IV_ZSIGN
+                                     IV_YEAR
+                            CHANGING LV_PAYCNT.
+
+  CHECK LT_PAYSLIP_B3[] IS NOT INITIAL.
+
+  " Adobe Form PDF 생성
+  CLEAR: LS_OUTPUTPARAMS,
+         LS_DOCPARAMS,
+         LS_FORMOUTPUT,
+         LV_AF_FM_NAME.
+
+  LS_OUTPUTPARAMS-NODIALOG = 'X'.
+  LS_OUTPUTPARAMS-GETPDF   = 'X'.
+
+  CALL FUNCTION 'FP_JOB_OPEN'
+    CHANGING
+      IE_OUTPUTPARAMS = LS_OUTPUTPARAMS
+    EXCEPTIONS
+      CANCEL          = 1
+      USAGE_ERROR     = 2
+      SYSTEM_ERROR    = 3
+      INTERNAL_ERROR  = 4
+      OTHERS          = 5.
+
+  IF SY-SUBRC <> 0.
+    RETURN.
+  ENDIF.
+
+  " [정리 4-2] Adobe Form 단일 양식(ZHR_F_PAYSLIP) 호출
+  CALL FUNCTION 'FP_FUNCTION_MODULE_NAME'
+    EXPORTING
+*     I_NAME     = 'ZHR_F_PAYSLIP'
+      "서식 변경 확인용
+      I_NAME     = 'ZHR_F_PAYSLIP_TEST'
+    IMPORTING
+      E_FUNCNAME = LV_AF_FM_NAME.
+
+  LS_DOCPARAMS-LANGU = SY-LANGU.
+
+  " 사원별 Adobe Form 생성 후 PDF 병합
+  CREATE OBJECT LO_PDF_MERGER.
+
+  LOOP AT LT_PAYSLIP_B3 INTO LS_PAYSLIP.
+    CLEAR: LS_FORMOUTPUT, LT_PAYSLIP_ONE[].
+    APPEND LS_PAYSLIP TO LT_PAYSLIP_ONE.
+
+    CALL FUNCTION LV_AF_FM_NAME
+      EXPORTING
+        /1BCDWB/DOCPARAMS  = LS_DOCPARAMS
+        STAB               = LT_PAYSLIP_ONE
+      IMPORTING
+        /1BCDWB/FORMOUTPUT = LS_FORMOUTPUT
+      EXCEPTIONS
+        USAGE_ERROR        = 1
+        SYSTEM_ERROR       = 2
+        INTERNAL_ERROR     = 3
+        OTHERS             = 4.
+
+    IF SY-SUBRC <> 0.
+      CALL FUNCTION 'FP_JOB_CLOSE'.
+      RETURN.
+    ENDIF.
+
+    IF LS_FORMOUTPUT-PDF IS NOT INITIAL.
+      LO_PDF_MERGER->ADD_DOCUMENT( LS_FORMOUTPUT-PDF ).
+    ENDIF.
+  ENDLOOP.
+
+  CALL FUNCTION 'FP_JOB_CLOSE'
+    EXCEPTIONS
+      USAGE_ERROR    = 1
+      SYSTEM_ERROR   = 2
+      INTERNAL_ERROR = 3
+      OTHERS         = 4.
+
+  IF SY-SUBRC <> 0.
+    RETURN.
+  ENDIF.
+
+  LO_PDF_MERGER->MERGE_DOCUMENTS(
+    IMPORTING
+      MERGED_DOCUMENT = E_PDF_DATA
+      RC              = LV_MERGE_RC ).
+
+  EV_PDF      = E_PDF_DATA.
+  E_PDF_FSIZE = XSTRLEN( E_PDF_DATA ).
+
+ENDFUNCTION.

@@ -1,0 +1,109 @@
+FUNCTION z_mcp_update_source.
+  " 소스 저장(비활성 상태). PROG, INCL, FUNC 지원. 본인(sy-uname)이 만든 Z/Y 객체만.
+  DATA: lv_name     TYPE c LENGTH 40,
+        lv_type     TYPE c LENGTH 4,
+        lv_func     TYPE rs38l_fnam,
+        lv_rep      TYPE programm,
+        lv_grp      TYPE rs38l_area,
+        lv_author   TYPE tadir-author,
+        lv_pkg      TYPE tadir-devclass,
+        lv_ord      TYPE e070-trkorr,
+        lv_obj_cls  TYPE c LENGTH 4,
+        lv_corr_obj TYPE c LENGTH 40.
+
+  lv_name = to_upper( iv_name ).
+  lv_type = to_upper( iv_type ).
+
+  IF lv_name IS INITIAL OR ( lv_name(1) <> 'Z' AND lv_name(1) <> 'Y' ).
+    RAISE not_allowed.
+  ENDIF.
+
+  AUTHORITY-CHECK OBJECT 'S_DEVELOP'
+    ID 'DEVCLASS' DUMMY
+    ID 'OBJTYPE'  FIELD 'PROG'
+    ID 'OBJNAME'  DUMMY
+    ID 'P_GROUP'  DUMMY
+    ID 'ACTVT'    FIELD '02'.
+  IF sy-subrc <> 0.
+    RAISE not_allowed.
+  ENDIF.
+
+  CASE lv_type.
+    WHEN 'PROG' OR 'INCL'.
+      lv_rep      = lv_name.
+      lv_obj_cls  = 'ABAP'.
+      lv_corr_obj = lv_name.
+
+      SELECT SINGLE author devclass FROM tadir
+        INTO (lv_author, lv_pkg)
+        WHERE pgmid = 'R3TR' AND object = 'PROG' AND obj_name = lv_name.
+      IF sy-subrc <> 0.
+        ev_message = |객체가 없습니다: { lv_name }|.
+        RETURN.
+      ENDIF.
+
+    WHEN 'FUNC'.
+      lv_func = lv_name.
+      CALL FUNCTION 'FUNCTION_INCLUDE_INFO'
+        CHANGING
+          funcname            = lv_func
+          include             = lv_rep
+          group               = lv_grp
+        EXCEPTIONS
+          function_not_exists = 1
+          OTHERS              = 2.
+      IF sy-subrc <> 0.
+        ev_message = |함수 모듈이 없습니다: { lv_name }|.
+        RETURN.
+      ENDIF.
+
+      lv_obj_cls  = 'FUNC'.
+      lv_corr_obj = lv_name.
+
+      SELECT SINGLE author devclass FROM tadir
+        INTO (lv_author, lv_pkg)
+        WHERE pgmid = 'R3TR' AND object = 'FUGR' AND obj_name = lv_grp.
+      IF sy-subrc <> 0.
+        ev_message = |함수 그룹 TADIR 항목이 없습니다: { lv_grp }|.
+        RETURN.
+      ENDIF.
+
+    WHEN OTHERS.
+      RAISE not_allowed.
+  ENDCASE.
+
+  IF lv_author <> sy-uname AND lv_author <> 'DUSER07'.
+    ev_message = |본인 또는 허용된 작성자가 만든 객체만 수정할 수 있습니다 (작성자: { lv_author })|.
+    RETURN.
+  ENDIF.
+
+  IF lv_pkg <> '$TMP'.
+    CALL FUNCTION 'RS_CORR_INSERT'
+      EXPORTING
+        object              = lv_corr_obj
+        object_class        = lv_obj_cls
+        mode                = 'INSERT'
+        global_lock         = 'X'
+        devclass            = lv_pkg
+        korrnum             = iv_transport
+      IMPORTING
+        ordernum            = lv_ord
+      EXCEPTIONS
+        cancelled           = 1
+        permission_failure  = 2
+        unknown_objectclass = 3
+        OTHERS              = 4.
+    IF sy-subrc <> 0.
+      ev_message = |전송 요청 등록/잠금 실패 (rc={ sy-subrc })|.
+      RETURN.
+    ENDIF.
+  ENDIF.
+
+  INSERT REPORT lv_rep FROM it_source STATE 'I'.
+  IF sy-subrc = 0.
+    ev_ok = 'X'.
+    ev_message = |저장됨(비활성): { lv_name } ({ lv_rep })|.
+  ELSE.
+    ev_message = |INSERT REPORT 실패 (rc={ sy-subrc })|.
+  ENDIF.
+ENDFUNCTION.

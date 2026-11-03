@@ -1,0 +1,25 @@
+{
+  "servers": {
+    "sap-abap": {
+      "type": "stdio",
+      "command": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "args": ["${workspaceFolder}/sap-mcp/server.py"]
+    },
+    "ieumoffice": {
+      "type": "stdio",
+      "command": "C:\\Users\\sapin\\AppData\\Local\\Programs\\IeumOffice\\resources\\cli\\..\\..\\IeumOffice.exe",
+      "args": [
+        "C:\\Users\\sapin\\AppData\\Local\\Programs\\IeumOffice\\resources\\cli\\genoffice.cjs",
+        "mcp"
+      ],
+      "env": {
+        "ELECTRON_RUN_AS_NODE": "1"
+      }
+    },
+    "ieumoffice-editor": {
+      "type": "sse",
+      "url": "http://127.0.0.1:3093/mcp",
+      "serverUrl": "http://127.0.0.1:3093/mcp"
+    }
+  }
+}

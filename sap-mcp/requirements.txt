@@ -1,0 +1,5 @@
+# pyrfc 3.3.1 은 PyPI 에서 yanked(공식 지원 종료, SAP/PyRFC#372) 상태지만 Windows x64 휠은 설치 가능.
+# Python 3.8~3.12 만 휠 제공. 버전을 고정해야 pip 가 선택한다.
+mcp>=1.2.0,<2
+pyrfc==3.3.1
+python-dotenv>=1.0

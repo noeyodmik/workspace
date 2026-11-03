@@ -1,0 +1,40 @@
+FUNCTION z_mcp_syntax_check.
+  " 소스를 저장하지 않고 문법만 검사 (PROG/INCL). 읽기 전용.
+  DATA: lv_name TYPE c LENGTH 40,
+        lv_msg  TYPE string,
+        lv_line TYPE i,
+        lv_word TYPE string.
+
+  lv_name = to_upper( iv_name ).
+  IF lv_name IS INITIAL OR ( lv_name(1) <> 'Z' AND lv_name(1) <> 'Y' ).
+    RAISE not_allowed.
+  ENDIF.
+  IF to_upper( iv_type ) <> 'PROG' AND to_upper( iv_type ) <> 'INCL'.
+    RAISE not_allowed.
+  ENDIF.
+
+  AUTHORITY-CHECK OBJECT 'S_DEVELOP'
+    ID 'DEVCLASS' DUMMY
+    ID 'OBJTYPE'  FIELD 'PROG'
+    ID 'OBJNAME'  DUMMY
+    ID 'P_GROUP'  DUMMY
+    ID 'ACTVT'    FIELD '03'.
+  IF sy-subrc <> 0.
+    RAISE not_allowed.
+  ENDIF.
+
+  SYNTAX-CHECK FOR it_source
+    MESSAGE lv_msg
+    LINE    lv_line
+    WORD    lv_word
+    PROGRAM lv_name.
+
+  IF sy-subrc = 0.
+    ev_ok = 'X'.
+  ELSE.
+    CLEAR ev_ok.
+    ev_message = lv_msg.
+    ev_line    = lv_line.
+    ev_word    = lv_word.
+  ENDIF.
+ENDFUNCTION.

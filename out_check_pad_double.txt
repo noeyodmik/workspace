@@ -1,0 +1,8 @@
+== DD04L PAD_SFEC_DOUBLE_VALUE
+(none)
+== DD01L domain of that element
+(none)
+== DD03L PAYCOMPVALUE components
+PAD_SFEC_CE_PAYCOMP_RECURRING |PAYCOMPVALUE                  |PAD_SFEC_DOUBLE_VALUE         |STRU|000000|000000|S
+== DD03L P0008 BET01
+PA0008                        |BET01                         |PAD_AMT7S                     |CURR|000013|000002

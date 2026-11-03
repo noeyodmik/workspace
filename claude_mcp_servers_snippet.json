@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "sap-abap": {
+      "command": "C:\\Users\\sapin\\Desktop\\Workspace\\.venv\\Scripts\\python.exe",
+      "args": ["C:\\Users\\sapin\\Desktop\\Workspace\\sap-mcp\\server.py"]
+    },
+    "ieumoffice": {
+      "command": "C:\\Users\\sapin\\AppData\\Local\\Programs\\IeumOffice\\IeumOffice.exe",
+      "args": ["C:\\Users\\sapin\\AppData\\Local\\Programs\\IeumOffice\\resources\\cli\\genoffice.cjs", "mcp"],
+      "env": { "ELECTRON_RUN_AS_NODE": "1" }
+    }
+  }
+}

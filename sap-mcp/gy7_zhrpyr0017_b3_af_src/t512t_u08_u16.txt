@@ -1,0 +1,580 @@
+=== T512T >= 1000 ===
+1000 기본급
+1001 기본급(조정)
+1100 기본연장급
+1101 기본연장급(조정)
+1200 능력급
+1201 능력급(조정)
+1300 식대수당
+1301 식대수당(조정)
+1400 현장직무수당
+1401 현장직무수당(조정)
+1500 자격증수당
+1501 자격증수당(조정)
+1600 현장휴일근로수당
+1601 현장휴일근로수당(조정)
+1900 급지수당
+1901 급지수당(조정)
+1910 휴가비-통상임금
+1920 AI활용지원금
+1921 AI활용지원금(조정)
+2000 직책/선임수당
+2001 직책/선임수당(조정)
+2010 직책/선임수당(시급제외)
+2100 당직수당
+2200 자녀학자금
+2300 해외수당
+2700 기타수당
+2710 기타수당(과세X)
+2720 기타수당(지급X,과세O)
+2800 조정금
+2810 사원고용보험조정
+2900 기지급금(과세)
+3100 연장수당
+3200 야간수당
+3300 현장휴일근로수당
+3400 휴일연장수당
+3500 석식대수당
+3600 특근수당
+3610 특근초과
+3700 연차수당
+4000 정기 상여
+4001 상여월액
+4100 특별 성과급
+4200 특별 성과급(활동비)
+4300 특별 성과급(비과세)
+4400 휴가비
+4500 포상금
+5000 기타 공제
+5098 연말정산경정 소득세조정
+5099 연말정산경정 주민세정정
+5100 학자금대출상환
+5200 주차비
+5300 구내식당
+5400 경조비
+5410 경조비(임원)
+5500 린라운지
+5600 통근버스
+5700 복지대출상환
+5710 복지대출이자
+5800 복지대출상환(사내근로)
+5810 복지대출이자(사내근로)
+5900 복지포인트 초과
+6000 임원이동통신비
+9011 소득세 반영
+9012 주민세 반영
+9013 소득세 가감
+9014 주민세 가감
+9021 연말정산 소득세 반영
+9022 연말정산 주민세 반영
+9301 소득세(반제)
+9302 주민세(반제)
+93QI 차감 환급 소득세(반제)
+93QR 차감 환급 주민세(반제)
+94N0 건강보험 대체
+94T0 노인장기요양 대체
+94U0 고용보험 가감
+9500 퇴직 기타 공제
+9558 은행이체(반제)
+9559 퇴직금 이체금액(계정설정)
+9600 연말정산 정보성 금액
+A000 기본급 - 1 구성요소
+A001 능력제 기본급
+A002 근속 연수에 따른 기본급
+ASAL 연봉
+BA30 개인연금 저축 사원 분담금
+BPAD 비과세 차이 금액(BPS)
+BPAR 환급 금액(비과세)
+BPDE 공제 금액(BPS)
+BPED 과세 대상 차이 금액(BPS)
+BPER 환급 급액(과세 대상)
+BPEX 초과 금액(BPS)
+BR10 건강 검진 고용주 부담
+BR30 개인연금저축 고용주분담금
+BR50 고용주 부담 교육비
+BSAL 복리후생 급여
+C010 통근 수당
+C011 해외 근무 수당
+C012 자격증 수당
+C013 가족 수당
+C014 근속 기간 수당
+C015 직무 수당
+C016 수당 전기
+C017 과세 대상 수업료 수당
+C100 직위 수당
+C101 연구 수당
+C102 책임 수당
+C210 포상
+C220 경조비
+C230 식비 수당
+C240 자녀 수당
+C250 전공의 수련보조수당
+C500 특별 지급
+CM01 급여 인상
+CM02 급여 조정
+CM03 상여
+CM04 주식
+CSAL 계획 지급
+E010 비용환급(연구수당: 한도)
+E020 직무발명보상금
+E030 비용 환급(조서 수당)
+E040 비용 환급(연구수당:한도)
+E041 연구보조비-초중등교육법
+E042 연구보조비-고등교육법
+E043 연구보조비-특별법
+E044 연구보조비-연구기관
+E045 연구보조비-중소기업/벤처
+E050 비용 환급(자가운전보조금)
+EI01 사원 고용보험 공제
+EI02 고용주 고용보험 공제
+EI03 사원 고용보험료조정(작년)
+EI04 고용주고용보험료조정-작년
+EI05 EI 사원 불입금-작년
+EI06 EI 고용주 불입금-작년
+HD01 건강보험 EE 공제보험료
+HD02 건강보험 ER 공제보험료
+HD03 EE 건강보험료 조정(작년)
+HD04 ER 건강보험료 조정(작년)
+HD05 HI(LI) EE 할부 - 전년도
+HD06 HI(LI) ER 할부 - 전년도
+LE01 EE 장기요양보험 월간 공제
+LE02 ER 장기요양보험 월간 공제
+LE03 EE 장기요양보험 연간 조정
+LE04 ER 장기요양보험 연간 조정
+M000 시간 단가
+M001 시급
+M021 초과 근무 수당
+M022 C.O 초과 근무 수당
+M023 D.P 초과 근무 수당
+M031 야간 근무 수당
+M032 C.O 야간 근무 수당
+M033 D.P 야간 근무 수당
+M041 공휴일 수당
+M042 C.O 휴일 근무 수당
+M043 D.P 휴일 근무 수당
+M051 휴일 초과 근무 수당
+M052 C.O 휴일 초과 근무 수당
+M053 D.P 휴일 초과 근무 수당
+M101 월차 수당
+M102 연차 수당
+M103 근속 휴가 수당
+M104 월차 휴가 수당
+M110 휴가 보상(금액)
+M741 노동 조합비
+M742 노동 조합비
+MC99 주식 옵션
+MD00 공제, C 선불
+MD02 공제, D, 절대
+MD04 공제, 연체 제외 보상
+MD06 공제, 연체 포함 D
+MD10 MD00 선불
+MD20 MD00 이전 기간에 선불
+MD30 선불 MD20 상환
+MD50 밸런스 보상 포함 연체
+MD60 MD50 보상 범위
+MD70 MD60 보상 범위 밸런스
+MD80 MD70 밸런스 공제
+MD90 MD80 공제 총계
+MEX1 외부 지급
+MEX2 외부 지급
+N100 100% 비과세
+N900 100% 비과세 제외
+NP01 국민연금 EE 공제보험료
+NP02 국민연금 ER 공제보험료
+PSAL 복리후생 급여
+Q100 동호회 공제
+Q105 기타 공제
+Q110 징계 처분
+Q120 노동 조합 회비
+Q130 법정 기부금
+Q140 개인 연금
+Q150 연금저축(고용주)
+S001 정기 상여
+S002 비정기 상여
+S011 승인된 상여
+S012 주식매수선택권 행사이익
+S013 우리사주조합인출금
+S014 우리사주조합인출금
+S015 중소기업 경영성과급
+S016 성과보상기금
+SPA2 연 평균 소득(19 전)
+SPAV 연평균급여
+WC02 고용주 산재보험료 공제
+WC04 고용주산재보험료조정-작년
+=== LZHR0004U08 (ZHR0004_GET_PAYRESULT_V2) ===
+FUNCTION ZHR0004_GET_PAYRESULT_V2.
+*"--------------------------------------------------------------------
+*"*"로컬인터페이스:
+*"  IMPORTING
+*"     VALUE(PERNR) TYPE  PERSNO
+*"     VALUE(ABKRS) TYPE  ABKRS
+*"     VALUE(YYYYMM) TYPE  FAPER OPTIONAL
+*"     VALUE(OCRSN) TYPE  PAY_OCRSN OPTIONAL
+*"     VALUE(PAYID) TYPE  PAYID OPTIONAL
+*"     VALUE(PAYDT) TYPE  PAY_DATE OPTIONAL
+*"     VALUE(MODE) TYPE  CHAR01
+*"     VALUE(FLAG) TYPE  CHAR01 DEFAULT 'X'
+*"  EXPORTING
+*"     REFERENCE(PAY_DATE) TYPE  PAY_DATE
+*"     REFERENCE(RETROYM) TYPE  FAPER
+*"  TABLES
+*"      RT STRUCTURE  ZHRS0013 OPTIONAL
+*"      CRT STRUCTURE  PC208 OPTIONAL
+*"      BT STRUCTURE  PC209 OPTIONAL
+*"      WPBP STRUCTURE  PC205 OPTIONAL
+*"      KRSI STRUCTURE  PC2H3 OPTIONAL
+*"--------------------------------------------------------------------
+** 정규급여시 급여일자 셋팅
+  DATA: LV_BEGDA      TYPE BEGDA,
+        LV_ENDDA      TYPE ENDDA.
+  DATA: LS_T549A      TYPE T549A.
+  DATA: PABRJ         TYPE PABRJ,
+        PABRP         TYPE PABRP.
+
+  DATA: PRINT_START(6),
+        PRINT_END(6).
+  DATA: NUM           TYPE I.
+  DATA: LT_RT         TYPE TABLE OF ZHRS0013  WITH HEADER LINE.
+
+  CLEAR: RT, CRT, WPBP.
+  REFRESH: RT, CRT, WPBP.
+
+
+  IF OCRSN  =   ''.
+    MOVE YYYYMM+0(4)  TO PABRJ.
+    MOVE YYYYMM+4(2)  TO PABRP.
+*    CALL FUNCTION 'HR_GB_PAY_DATE'
+*      EXPORTING
+*        MOLGA              = '41'
+*        ABKRS              = ABKRS
+*        PABRJ              = PABRJ
+*        PABRP              = PABRP
+*      IMPORTING
+*        PDATE              = PAY_DATE
+*      EXCEPTIONS
+*        PAY_DATE_NOT_FOUND = 1
+*        OTHERS             = 2.
+
+    SELECT SINGLE * INTO CORRESPONDING FIELDS OF LS_T549A
+      FROM T549A
+     WHERE ABKRS = ABKRS.
+
+    "급여기간 가져오기
+    CALL FUNCTION 'HR_GB_PERIOD_DATES'
+      EXPORTING
+        ABKRS            = ABKRS
+        PERMO            = LS_T549A-PERMO
+        PABRJ            = PABRJ
+        PABRP            = PABRP
+      IMPORTING
+        BEGDA            = LV_BEGDA
+        ENDDA            = LV_ENDDA
+      EXCEPTIONS
+        PERIOD_NOT_FOUND = 1
+        OTHERS           = 2.
+
+*직전 급여기간 마지막 일자 가져오기 (전월 0008 퇴직정산)
+    CALL FUNCTION 'MONTH_PLUS_DETERMINE'
+      EXPORTING
+        MONTHS  = '-1'
+        OLDDATE = LV_ENDDA
+      IMPORTING
+        NEWDATE = TMP_DATE1
+      EXCEPTIONS
+        OTHERS  = 1.
+
+    CALL FUNCTION 'RP_LAST_DAY_OF_MONTHS'
+      EXPORTING
+        DAY_IN            = TMP_DATE1
+      IMPORTING
+        LAST_DAY_OF_MONTH = TMP_DATE1.
+
+  ENDIF.
+
+
+* 모든급여 data을 읽어온다.
+  CLEAR: RGDIR, RGDIR[].
+  CALL FUNCTION 'CU_READ_RGDIR'
+    EXPORTING
+      PERSNR          = PERNR
+    TABLES
+      IN_RGDIR        = RGDIR        "structure pc261.
+    EXCEPTIONS
+      NO_RECORD_FOUND = 1
+      OTHERS          = 2.
+
+  IF SY-SUBRC = 1.
+  ENDIF.
+
+  W_PERNR = PERNR.
+
+
+  CLEAR: LT_RT[], CRT[], BT[], WPBP[], KRSI[].
+
+* 급여사유별 급여결과 취득
+  CASE OCRSN.
+    WHEN '0007' OR ''.             "정기급여
+      PERNR_ABKRS = ABKRS.
+*      W_RETRO     = RETRO.
+      GV_MODE     = MODE.
+      PN_PER      = YYYYMM.
+      PRINT_START = PN_PER.
+      PRINT_END   = PN_PER.
+      CHECK RGDIR-OCRSN EQ ''.
+
+      IF RGDIR-INPER EQ RGDIR-FPPER AND
+         RGDIR-OCRSN EQ RGDIR-INOCR.
+        PERFORM GET_RESULT_FROM_RETO_2 TABLES RGDIR
+                                              LT_RT
+                                              CRT
+                                              BT
+                                              WPBP
+                                              KRSI
+                                        USING PRINT_START
+                                              PRINT_END
+                                              FLAG
+                                     CHANGING RETROYM.
+        PAY_DATE = RGDIR-PAYDT.
+      ENDIF.
+
+
+    WHEN '0005'.                 "연말정산.
+      LOOP AT RGDIR.
+        CHECK RGDIR-PAYDT EQ PAYDT.
+        CHECK RGDIR-OCRSN EQ '0005'.
+        IF RGDIR-SRTZA EQ 'A'.
+          PERFORM GET_RESULTS_2 TABLES LT_RT
+                                       CRT
+                                       BT
+                                       WPBP
+                                 USING RGDIR.
+          PAY_DATE = RGDIR-PAYDT.
+        ENDIF.
+      ENDLOOP.
+
+
+    WHEN OTHERS.                 "그 외 비정기
+      LOOP AT RGDIR.
+        CHECK RGDIR-PAYDT EQ PAYDT.
+        CHECK RGDIR-OCRSN EQ OCRSN.
+        CHECK RGDIR-PAYID EQ PAYID.
+
+        IF RGDIR-INPER EQ RGDIR-FPPER AND
+           RGDIR-OCRSN EQ RGDIR-INOCR.
+          PERFORM GET_RESULTS_2 TABLES LT_RT
+                                       CRT
+                                       BT
+                                       WPBP
+                                 USING RGDIR.
+          PAY_DATE = RGDIR-PAYDT.
+        ENDIF.
+      ENDLOOP.
+
+  ENDCASE.
+
+* 각 조회옵션별 임금유형 collect를 위해 필드값 클리어
+  LOOP AT LT_RT.
+    CASE MODE.
+      WHEN 'A'.  "당월+소급분합산
+        CLEAR: LT_RT-FPPER,     "대상기간
+               LT_RT-INPER,     "조회기간
+               LT_RT-PAYID,     "식별자
+               LT_RT-PAYDT,     "급여 지급일
+               LT_RT-OCRSN.     "급여사유
+
+      WHEN 'B'.  "당월+소급분 월별
+        CLEAR: LT_RT-PAYID,     "식별자
+               LT_RT-PAYDT,     "급여 지급일
+               LT_RT-OCRSN.     "급여사유
+
+      WHEN 'C'.  "당월+소급분지급분별
+
+      WHEN 'D'.  "당월분만
+        IF LT_RT-FPPER <> LT_RT-INPER.
+          CLEAR: LT_RT-FPPER,     "대상기간
+                 LT_RT-INPER,     "조회기간
+                 LT_RT-PAYID,     "식별자
+                 LT_RT-PAYDT,     "급여 지급일
+                 LT_RT-OCRSN.     "급여사유
+
+          DELETE TABLE LT_RT FROM LT_RT.
+          CONTINUE.
+        ENDIF.
+
+      WHEN 'E'.  "소급분만 합산
+        IF LT_RT-FPPER = LT_RT-INPER.
+          CLEAR: LT_RT-FPPER,     "대상기간
+                 LT_RT-PAYID,     "식별자
+                 LT_RT-PAYDT,     "급여 지급일
+                 LT_RT-OCRSN.     "급여사유
+
+          DELETE TABLE LT_RT FROM LT_RT.
+          CONTINUE.
+        ENDIF.
+
+      WHEN 'F'. "소급분지급분별
+        IF LT_RT-FPPER = LT_RT-INPER.
+          DELETE TABLE LT_RT FROM LT_RT.
+          CONTINUE.
+        ENDIF.
+
+      WHEN 'G'. "당월분 + 소급분별도
+
+    ENDCASE.
+
+    MOVE-CORRESPONDING LT_RT TO RT.
+    COLLECT RT.
+
+  ENDLOOP.
+
+
+
+
+
+ENDFUNCTION.
+=== LZHR0004U16 (ZHR0004_GET_ANNUAL_REWARD) ===
+FUNCTION ZHR0004_GET_ANNUAL_REWARD.
+*"----------------------------------------------------------------------
+*"*"Local interface:
+*"  IMPORTING
+*"     VALUE(IM_PERNR) TYPE  PERSNO OPTIONAL
+*"     VALUE(IM_DATE) TYPE  DATS
+*"  EXPORTING
+*"     VALUE(E_CODE) TYPE  CHAR01
+*"     VALUE(E_MSG) TYPE  BAPI_MSG
+*"  TABLES
+*"      T_TABLE STRUCTURE  ZHRS0039
+*"----------------------------------------------------------------------
+
+  DATA: LT_ZHRPT0002        TYPE TABLE OF ZHRPT0002 WITH HEADER LINE.
+  DATA: LT_ZHRPT0002_O    TYPE TABLE OF ZHRPT0002 WITH HEADER LINE.
+  DATA: LT_KEY                  LIKE TABLE OF LT_ZHRPT0002 WITH HEADER LINE.
+  DATA: LV_CHK TYPE CHAR01.
+
+  DATA: LV_DATE TYPE SY-DATUM,
+            LV_ZEIT TYPE SY-UZEIT.
+
+  CLEAR:  LT_ZHRPT0002, LT_ZHRPT0002_O.
+
+* log 테이블에 저장   =================================
+  PERFORM make_logkey.
+
+  zhriflog-itype = 'AR'.
+  zhriflog-param = im_pernr && '/' && im_DATE.
+
+  LOOP AT t_table.
+    ADD 1 TO zhriflog-seqno.
+    zhriflog-data =  t_table-pernr && '/' && t_table-ANZHL && '/' && t_table-LEGZHL.
+    INSERT zhriflog.
+  ENDLOOP.
+  zhriflog-seqno = 0.
+  zhriflog-data  = ''.
+*======================================================
+
+  SELECT *
+    INTO CORRESPONDING FIELDS OF TABLE LT_ZHRPT0002_O
+    FROM ZHRPT0002.
+
+  SORT LT_ZHRPT0002_O BY PERNR BEGDA.
+
+  IF im_pernr IS NOT INITIAL. " 사원번호가 import 될 경우 해당 사원 외는 삭제
+    DELETE t_table WHERE pernr <> im_pernr.
+  ENDIF.
+
+  " 보상일 체크
+
+  IF IM_DATE IS INITIAL.
+    E_CODE = 'E'.   " 에러.
+    E_MSG = '보상일을 입력해 주십시오'.
+
+    zhriflog-param = 'E1_' && E_MSG.
+    insert zhriflog.
+    RETURN.
+  ENDIF.
+
+  LOOP AT T_TABLE.
+
+    CLEAR: LT_ZHRPT0002, LV_DATE, LV_ZEIT.
+
+    AT NEW PERNR.
+      CLEAR: LV_CHK.
+    ENDAT.
+
+    LT_ZHRPT0002-PERNR = T_TABLE-PERNR.
+    LT_ZHRPT0002-BEGDA = IM_DATE.
+    LT_ZHRPT0002-ANZHL = T_TABLE-ANZHL.
+    LT_ZHRPT0002-LEGZHL = T_TABLE-LEGZHL.
+    LT_ZHRPT0002-LGART = '3700'.
+
+
+    LT_ZHRPT0002-ERNAM = SY-UNAME.
+
+    CALL FUNCTION 'ISU_DATE_TIME_CONVERT_TIMEZONE'
+      EXPORTING
+        X_DATE_UTC = SY-DATUM
+        X_TIME_UTC = SY-UZEIT
+        X_TIMEZONE = SY-ZONLO
+      IMPORTING
+        Y_DATE_LCL = LV_DATE
+        Y_TIME_LCL = LV_ZEIT.
+
+    LT_ZHRPT0002-ERDAT = LV_DATE.
+    LT_ZHRPT0002-ERTIM = LV_ZEIT.
+
+    APPEND LT_ZHRPT0002.
+
+    IF LV_CHK = 'X'.
+      CONTINUE.
+    ENDIF.
+
+    READ TABLE LT_ZHRPT0002_O
+          TRANSPORTING NO FIELDS
+            WITH KEY BEGDA+0(4) = IM_DATE+0(4).
+
+    IF SY-SUBRC = 0.
+
+      LOOP AT LT_ZHRPT0002_O FROM SY-TABIX WHERE BEGDA+0(4) = IM_DATE+0(4).
+
+        LV_CHK = 'X'.
+
+        MOVE-CORRESPONDING LT_ZHRPT0002_O TO LT_KEY.
+
+        COLLECT LT_KEY. CLEAR LT_KEY.
+
+      ENDLOOP.
+
+    ENDIF.
+
+  ENDLOOP.
+
+  LOOP AT LT_KEY.
+
+    DELETE LT_ZHRPT0002_O WHERE PERNR = LT_KEY-PERNR
+                                               AND BEGDA = LT_KEY-BEGDA.
+
+  ENDLOOP.
+
+  IF LT_ZHRPT0002[] IS INITIAL.
+    E_CODE = 'E'.   " 오류.
+    E_MSG = '입력값을 확인해 주십시오'.
+
+    zhriflog-param = 'E1_' && E_MSG.
+    insert zhriflog.
+    RETURN.
+  ENDIF.
+
+  APPEND LINES OF LT_ZHRPT0002 TO LT_ZHRPT0002_O.
+  SORT LT_ZHRPT0002_O BY PERNR BEGDA.
+
+  MODIFY ZHRPT0002 FROM TABLE LT_ZHRPT0002_O.
+
+  IF SY-SUBRC = 0.
+    E_CODE = 'S'.   " 성공.
+    E_MSG = '저장에 성공하였습니다'.
+
+    zhriflog-param = 'S_' && E_MSG.
+    insert zhriflog.
+  ENDIF.
+
+
+ENDFUNCTION.

@@ -1,0 +1,52 @@
+FUNCTION z_mcp_search.
+  " 객체 검색 (TADIR). Z/Y 로 시작하는 이름 패턴만 허용.
+  DATA: lv_pat TYPE tadir-obj_name,
+        lv_pkg TYPE tadir-devclass,
+        lr_obj TYPE RANGE OF tadir-object,
+        lv_max TYPE i.
+
+  AUTHORITY-CHECK OBJECT 'S_DEVELOP'
+    ID 'DEVCLASS' DUMMY
+    ID 'OBJTYPE'  FIELD 'PROG'
+    ID 'OBJNAME'  DUMMY
+    ID 'P_GROUP'  DUMMY
+    ID 'ACTVT'    FIELD '03'.
+  IF sy-subrc <> 0.
+    RAISE not_allowed.
+  ENDIF.
+
+  lv_pat = to_upper( iv_pattern ).
+  REPLACE ALL OCCURRENCES OF '*' IN lv_pat WITH '%'.
+  IF lv_pat IS INITIAL OR ( lv_pat(1) <> 'Z' AND lv_pat(1) <> 'Y' ).
+    RAISE not_allowed.
+  ENDIF.
+
+  lv_pkg = to_upper( iv_package ).
+  IF lv_pkg IS INITIAL.
+    lv_pkg = '%'.
+  ELSE.
+    REPLACE ALL OCCURRENCES OF '*' IN lv_pkg WITH '%'.
+  ENDIF.
+
+  IF iv_type IS INITIAL.
+    lr_obj = VALUE #( sign = 'I' option = 'EQ'
+                      ( low = 'PROG' ) ( low = 'CLAS' ) ( low = 'INTF' )
+                      ( low = 'FUGR' ) ( low = 'TABL' ) ( low = 'DTEL' ) ).
+  ELSE.
+    lr_obj = VALUE #( ( sign = 'I' option = 'EQ' low = to_upper( iv_type ) ) ).
+  ENDIF.
+
+  lv_max = iv_max.
+  IF lv_max <= 0 OR lv_max > 500.
+    lv_max = 100.
+  ENDIF.
+
+  SELECT * FROM tadir
+    INTO CORRESPONDING FIELDS OF TABLE et_objects
+    UP TO lv_max ROWS
+    WHERE pgmid    = 'R3TR'
+      AND object   IN lr_obj
+      AND obj_name LIKE lv_pat
+      AND devclass LIKE lv_pkg
+    ORDER BY obj_name.
+ENDFUNCTION.

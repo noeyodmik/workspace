@@ -1,0 +1,10 @@
+.env
+.env*
+.backup/
+*.log
+*/audit.log
+audit.log
+__pycache__/
+.venv/
+nwrfc750P_*/
+

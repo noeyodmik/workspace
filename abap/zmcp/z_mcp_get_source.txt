@@ -1,0 +1,81 @@
+FUNCTION z_mcp_get_source.
+  " 소스 조회. PROG/INCL 은 READ REPORT, FUNC 은 FUNCTION_INCLUDE_INFO + READ REPORT, CLAS 는 CL_OO_FACTORY 사용.
+  " 표준 프로그램/함수 및 Z/Y 커스텀 객체 모두 조회 가능 (읽기 전용).
+  DATA: lv_name TYPE c LENGTH 40,
+        lv_type TYPE c LENGTH 4,
+        lt_str  TYPE seop_source_string,
+        ls_str  TYPE string.
+
+  lv_name = to_upper( iv_name ).
+  lv_type = to_upper( iv_type ).
+
+  IF lv_name IS INITIAL.
+    RAISE not_allowed.
+  ENDIF.
+
+  AUTHORITY-CHECK OBJECT 'S_DEVELOP'
+    ID 'DEVCLASS' DUMMY
+    ID 'OBJTYPE'  FIELD 'PROG'
+    ID 'OBJNAME'  DUMMY
+    ID 'P_GROUP'  DUMMY
+    ID 'ACTVT'    FIELD '03'.
+  IF sy-subrc <> 0.
+    RAISE not_allowed.
+  ENDIF.
+
+  CASE lv_type.
+    WHEN 'PROG' OR 'INCL'.
+      " 비활성 소스 먼저 조회 시도, 없으면 활성 소스 조회
+      READ REPORT lv_name INTO et_source STATE 'I'.
+      IF sy-subrc <> 0.
+        READ REPORT lv_name INTO et_source STATE 'A'.
+        IF sy-subrc <> 0.
+          READ REPORT lv_name INTO et_source.
+          IF sy-subrc <> 0.
+            RAISE not_found.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+
+    WHEN 'FUNC'.
+      DATA: lv_func TYPE rs38l_fnam,
+            lv_finc TYPE programm,
+            lv_fgrp TYPE rs38l_area.
+      lv_func = lv_name.
+      CALL FUNCTION 'FUNCTION_INCLUDE_INFO'
+        CHANGING
+          funcname            = lv_func
+          include             = lv_finc
+          group               = lv_fgrp
+        EXCEPTIONS
+          OTHERS              = 1.
+      IF sy-subrc <> 0.
+        RAISE not_found.
+      ENDIF.
+      READ REPORT lv_finc INTO et_source STATE 'I'.
+      IF sy-subrc <> 0.
+        READ REPORT lv_finc INTO et_source STATE 'A'.
+        IF sy-subrc <> 0.
+          READ REPORT lv_finc INTO et_source.
+          IF sy-subrc <> 0.
+            RAISE not_found.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+
+    WHEN 'CLAS'.
+      TRY.
+          DATA(lo_src) = cl_oo_factory=>create_instance( )->create_clif_source(
+                           clif_name = CONV #( lv_name ) ).
+          lo_src->get_source( IMPORTING source = lt_str ).
+        CATCH cx_root.
+          RAISE not_found.
+      ENDTRY.
+      LOOP AT lt_str INTO ls_str.
+        APPEND VALUE #( line = ls_str ) TO et_source.
+      ENDLOOP.
+
+    WHEN OTHERS.
+      RAISE not_allowed.
+  ENDCASE.
+ENDFUNCTION.

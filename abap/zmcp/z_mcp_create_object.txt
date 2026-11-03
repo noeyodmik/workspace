@@ -1,0 +1,82 @@
+FUNCTION z_mcp_create_object.
+  " 새 프로그램/인클루드 생성(비활성). Z/Y 이름, Z/Y 패키지 또는 $TMP 만 허용.
+  " RFC 백그라운드 환경에서 Dynpro 화면 팝업 없이 안전하게 생성.
+  DATA: lv_name   TYPE c LENGTH 40,
+        lv_type   TYPE c LENGTH 1,
+        lv_pkg    TYPE devclass,
+        lv_title  TYPE c LENGTH 70,
+        lv_dummy  TYPE tadir-obj_name,
+        lt_src    TYPE STANDARD TABLE OF abaptxt255,
+        lt_text   TYPE STANDARD TABLE OF textpool.
+
+  lv_name  = to_upper( iv_name ).
+  lv_pkg   = to_upper( iv_package ).
+  lv_title = iv_description.
+
+  IF lv_name IS INITIAL OR ( lv_name(1) <> 'Z' AND lv_name(1) <> 'Y' ).
+    RAISE not_allowed.
+  ENDIF.
+  IF lv_pkg <> '$TMP' AND lv_pkg(1) <> 'Z' AND lv_pkg(1) <> 'Y'.
+    RAISE not_allowed.
+  ENDIF.
+
+  CASE to_upper( iv_type ).
+    WHEN 'PROG'. lv_type = '1'.
+    WHEN 'INCL'. lv_type = 'I'.
+    WHEN OTHERS. RAISE not_allowed.
+  ENDCASE.
+
+  AUTHORITY-CHECK OBJECT 'S_DEVELOP'
+    ID 'DEVCLASS' DUMMY
+    ID 'OBJTYPE'  FIELD 'PROG'
+    ID 'OBJNAME'  DUMMY
+    ID 'P_GROUP'  DUMMY
+    ID 'ACTVT'    FIELD '01'.
+  IF sy-subrc <> 0.
+    RAISE not_allowed.
+  ENDIF.
+
+  SELECT SINGLE obj_name FROM tadir INTO lv_dummy
+    WHERE pgmid = 'R3TR' AND object = 'PROG' AND obj_name = lv_name.
+  IF sy-subrc = 0.
+    ev_message = |이미 존재합니다: { lv_name }|.
+    RETURN.
+  ENDIF.
+
+  APPEND VALUE #( line = |* { lv_title }| ) TO lt_src.
+  IF lv_type = '1'.
+    APPEND VALUE #( line = |REPORT { lv_name }.| ) TO lt_src.
+  ENDIF.
+
+  " 1. 비활성 소스 생성
+  INSERT REPORT lv_name FROM lt_src STATE 'I' PROGRAM TYPE lv_type.
+  IF sy-subrc <> 0.
+    ev_message = |INSERT REPORT 실패 (rc={ sy-subrc })|.
+    RETURN.
+  ENDIF.
+
+  " 2. 프로그램 타이틀 지정
+  IF lv_title IS NOT INITIAL.
+    APPEND VALUE #( id = 'R' key = space entry = lv_title ) TO lt_text.
+    INSERT TEXTPOOL lv_name FROM lt_text LANGUAGE sy-langu STATE 'I'.
+  ENDIF.
+
+  " 3. TADIR 카탈로그 등록
+  CALL FUNCTION 'TR_TADIR_INTERFACE'
+    EXPORTING
+      wi_test_modus     = abap_false
+      wi_tadir_pgmid    = 'R3TR'
+      wi_tadir_object   = 'PROG'
+      wi_tadir_obj_name = CONV sobj_name( lv_name )
+      wi_tadir_devclass = lv_pkg
+      wi_tadir_author   = sy-uname
+    EXCEPTIONS
+      OTHERS            = 1.
+
+  IF sy-subrc = 0.
+    ev_ok = 'X'.
+    ev_message = |생성됨(비활성): { lv_name }|.
+  ELSE.
+    ev_message = |TADIR 등록 실패 (rc={ sy-subrc })|.
+  ENDIF.
+ENDFUNCTION.

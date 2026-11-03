@@ -1,0 +1,138 @@
+FUNCTION z_mcp_activate.
+  " 객체 활성화. PROG, INCL, FUNC 지원. 본인이 만든 Z/Y 객체만.
+  DATA: lv_name   TYPE c LENGTH 40,
+        lv_type   TYPE c LENGTH 4,
+        lv_func   TYPE rs38l_fnam,
+        lv_rep    TYPE programm,
+        lv_grp    TYPE rs38l_area,
+        lv_author TYPE tadir-author,
+        lt_obj    TYPE STANDARD TABLE OF dwinactiv.
+
+  lv_name = to_upper( iv_name ).
+  lv_type = to_upper( iv_type ).
+
+  IF lv_name IS INITIAL OR ( lv_name(1) <> 'Z' AND lv_name(1) <> 'Y' ).
+    RAISE not_allowed.
+  ENDIF.
+
+  AUTHORITY-CHECK OBJECT 'S_DEVELOP'
+    ID 'DEVCLASS' DUMMY
+    ID 'OBJTYPE'  FIELD 'PROG'
+    ID 'OBJNAME'  DUMMY
+    ID 'P_GROUP'  DUMMY
+    ID 'ACTVT'    FIELD '02'.
+  IF sy-subrc <> 0.
+    RAISE not_allowed.
+  ENDIF.
+
+  CASE lv_type.
+    WHEN 'PROG'.
+      SELECT SINGLE author FROM tadir INTO lv_author
+        WHERE pgmid = 'R3TR' AND object = 'PROG' AND obj_name = lv_name.
+      IF sy-subrc <> 0.
+        ev_message = |객체가 없습니다: { lv_name }|.
+        RETURN.
+      ENDIF.
+      APPEND VALUE #( object = 'PROG' obj_name = lv_name ) TO lt_obj.
+
+    WHEN 'INCL'.
+      SELECT SINGLE author FROM tadir INTO lv_author
+        WHERE pgmid = 'R3TR' AND object = 'PROG' AND obj_name = lv_name.
+      IF sy-subrc <> 0.
+        ev_message = |객체가 없습니다: { lv_name }|.
+        RETURN.
+      ENDIF.
+      APPEND VALUE #( object = 'REPS' obj_name = lv_name ) TO lt_obj.
+
+    WHEN 'FUNC'.
+      lv_func = lv_name.
+      CALL FUNCTION 'FUNCTION_INCLUDE_INFO'
+        CHANGING
+          funcname            = lv_func
+          include             = lv_rep
+          group               = lv_grp
+        EXCEPTIONS
+          function_not_exists = 1
+          OTHERS              = 2.
+      IF sy-subrc <> 0.
+        ev_message = |함수 모듈이 없습니다: { lv_name }|.
+        RETURN.
+      ENDIF.
+
+      SELECT SINGLE author FROM tadir INTO lv_author
+        WHERE pgmid = 'R3TR' AND object = 'FUGR' AND obj_name = lv_grp.
+      IF sy-subrc <> 0.
+        ev_message = |함수 그룹 TADIR 항목이 없습니다: { lv_grp }|.
+        RETURN.
+      ENDIF.
+
+    WHEN OTHERS.
+      RAISE not_allowed.
+  ENDCASE.
+
+  IF lv_author <> sy-uname AND lv_author <> 'DUSER07'.
+    ev_message = |본인 또는 허용된 작성자가 만든 객체만 활성화할 수 있습니다 (작성자: { lv_author })|.
+    RETURN.
+  ENDIF.
+
+  " DWINACTIV 에서 해당 객체 조회 (UNAME 포함)
+  SELECT object obj_name uname delet_flag
+    FROM dwinactiv
+    INTO TABLE lt_obj
+    WHERE uname = sy-uname
+      AND ( obj_name = lv_name OR obj_name = lv_rep ).
+
+  " DWINACTIV 에 아직 없으면 작업 영역에 등록 후 재조회
+  IF lt_obj IS INITIAL.
+    DATA: lv_ins_obj  TYPE e071-object,
+          lv_ins_name TYPE e071-obj_name.
+    IF lv_type = 'FUNC'.
+      lv_ins_obj  = 'REPS'.
+      lv_ins_name = lv_rep.
+    ELSE.
+      lv_ins_obj  = 'REPS'.
+      lv_ins_name = lv_name.
+    ENDIF.
+
+    CALL FUNCTION 'RS_INSERT_INTO_WORKING_AREA'
+      EXPORTING
+        object   = lv_ins_obj
+        obj_name = lv_ins_name
+      EXCEPTIONS
+        OTHERS   = 0.
+
+    SELECT object obj_name uname delet_flag
+      FROM dwinactiv
+      INTO TABLE lt_obj
+      WHERE uname = sy-uname
+        AND ( obj_name = lv_name OR obj_name = lv_rep ).
+  ENDIF.
+
+  IF lt_obj IS INITIAL.
+    ev_ok = 'X'.
+    ev_message = |비활성 변경사항 없음 (이미 활성): { lv_name }|.
+    RETURN.
+  ENDIF.
+
+  CALL FUNCTION 'RS_WORKING_OBJECTS_ACTIVATE'
+    EXPORTING
+      activate_ddic_objects  = abap_false
+      with_popup             = abap_false
+      suppress_corr_insert   = 'X'
+      suppress_syntax_check  = 'X'
+      suppress_enqueue       = abap_true
+      ui_decoupled           = abap_true
+    TABLES
+      objects                = lt_obj
+    EXCEPTIONS
+      excecution_error       = 1
+      cancelled              = 2
+      insert_into_corr_error = 3
+      OTHERS                 = 4.
+  IF sy-subrc = 0.
+    ev_ok = 'X'.
+    ev_message = |활성화됨: { lv_name } ({ lv_rep })|.
+  ELSE.
+    ev_message = |활성화 실패 (rc={ sy-subrc })|.
+  ENDIF.
+ENDFUNCTION.

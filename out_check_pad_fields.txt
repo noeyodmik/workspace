@@ -1,0 +1,2 @@
+== DD03L PAD_SFEC_DOUBLE_VALUE
+PAD_SFEC_DOUBLE_VALUE         |0001|VALUE                         |                              |STRG|000000|000000

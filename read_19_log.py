@@ -1,0 +1,21 @@
+import io, sys
+sys.path.insert(0, r"c:\Users\sapin\Desktop\Workspace\sap-mcp")
+from config import Settings
+from pyrfc import Connection
+
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+c = Connection(**Settings("EA3").rfc_params())
+
+r = c.call('Z_MCP_GET_REPLICATION_LOG', IV_DATE_FROM='20261103', IV_DATE_TO='20261103', IV_MAX=50)
+ms = r.get('ET_MESSAGES', [])
+in_19 = False
+print("=== Latest Messages (70000019) ===")
+for m in ms:
+    tx = m.get('MESSAGE') or ''
+    if '00:28:' in tx:
+        in_19 = True
+    if in_19:
+        if m.get('ID') == 'HRSFEC_PTP' and m.get('NUMBER') == '102':
+            continue
+        print(f"{m.get('TYPE')} | {m.get('ID')} {m.get('NUMBER')} | {tx}")
+

@@ -1,0 +1,137 @@
+FUNCTION z_mcp_get_payroll_result.
+  " 사번(PERNR)과 급여기간(INPER), 비정기조건(PAYTY, BONDT, SEQNR)의 한국 급여 결과(RT) 조회
+  " CU_READ_RGDIR 및 PYXX_READ_PAYROLL_RESULT 사용 (사전 문법 검증 완료)
+  DATA: lv_pernr  TYPE pernr_d,
+        lv_inper  TYPE inper,
+        lv_payty  TYPE payty,
+        lv_bondt  TYPE bondt,
+        lv_seqnr  TYPE numc5,
+        ls_rgdir  TYPE pc261,
+        lt_rgdir  TYPE STANDARD TABLE OF pc261,
+        ls_result TYPE paykr_result.
+
+  lv_pernr = iv_pernr.
+  lv_inper = iv_inper.
+  lv_payty = iv_payty.
+  lv_bondt = iv_bondt.
+  lv_seqnr = iv_seqnr.
+
+  " 권한 확인: P_ORGIN 또는 개발자 조회 권한 S_DEVELOP
+  AUTHORITY-CHECK OBJECT 'P_ORGIN'
+    ID 'INFTY' FIELD '0008'
+    ID 'SUBTY' DUMMY
+    ID 'AUTHC' FIELD 'R'.
+  IF sy-subrc <> 0.
+    AUTHORITY-CHECK OBJECT 'S_DEVELOP'
+      ID 'DEVCLASS' DUMMY
+      ID 'OBJTYPE'  FIELD 'PROG'
+      ID 'OBJNAME'  DUMMY
+      ID 'P_GROUP'  DUMMY
+      ID 'ACTVT'    FIELD '03'.
+    IF sy-subrc <> 0.
+      RAISE not_allowed.
+    ENDIF.
+  ENDIF.
+
+  " 1. 해당 사원의 급여 디렉토리(RGDIR) 읽기
+  CALL FUNCTION 'CU_READ_RGDIR'
+    EXPORTING
+      persnr          = lv_pernr
+    TABLES
+      in_rgdir        = lt_rgdir
+    EXCEPTIONS
+      no_record_found = 1
+      OTHERS          = 2.
+  IF sy-subrc <> 0 OR lt_rgdir IS INITIAL.
+    ev_message = |급여 결과 디렉토리가 없습니다 (사번: { lv_pernr })|.
+    RETURN.
+  ENDIF.
+
+  " 무효화(VOID = 'X')된 건은 제외하고 최신순 정렬
+  DELETE lt_rgdir WHERE void IS NOT INITIAL.
+  SORT lt_rgdir BY seqnr DESCENDING.
+
+  " 전체 급여 이력 테이블 반환
+  et_directory[] = lt_rgdir[].
+
+  " 2. 대상 순번(SEQNR) 결정 (비정기 조건 우선 반영)
+  IF lv_seqnr IS NOT INITIAL.
+    " 특정 순번 직접 지정
+    READ TABLE lt_rgdir INTO ls_rgdir WITH KEY seqnr = lv_seqnr.
+  ELSEIF lv_bondt IS NOT INITIAL.
+    " 비정기 지급일(BONDT) 기준 검색
+    READ TABLE lt_rgdir INTO ls_rgdir
+      WITH KEY bondt = lv_bondt srtza = 'A'.
+    IF sy-subrc <> 0.
+      READ TABLE lt_rgdir INTO ls_rgdir WITH KEY bondt = lv_bondt.
+    ENDIF.
+  ELSEIF lv_inper IS NOT INITIAL.
+    " 지급연월(INPER) 기준 검색 (비정기 유형 PAYTY 지정 여부 반영)
+    IF lv_payty IS NOT INITIAL.
+      READ TABLE lt_rgdir INTO ls_rgdir
+        WITH KEY inper = lv_inper payty = lv_payty srtza = 'A'.
+      IF sy-subrc <> 0.
+        READ TABLE lt_rgdir INTO ls_rgdir
+          WITH KEY inper = lv_inper payty = lv_payty.
+      ENDIF.
+    ELSE.
+      READ TABLE lt_rgdir INTO ls_rgdir
+        WITH KEY inper = lv_inper srtza = 'A'.
+      IF sy-subrc <> 0.
+        READ TABLE lt_rgdir INTO ls_rgdir WITH KEY inper = lv_inper.
+      ENDIF.
+    ENDIF.
+  ELSE.
+    " 기간 미지정 시 최신 유효 급여
+    IF lv_payty IS NOT INITIAL.
+      READ TABLE lt_rgdir INTO ls_rgdir
+        WITH KEY payty = lv_payty srtza = 'A'.
+      IF sy-subrc <> 0.
+        READ TABLE lt_rgdir INTO ls_rgdir WITH KEY payty = lv_payty.
+      ENDIF.
+    ELSE.
+      READ TABLE lt_rgdir INTO ls_rgdir WITH KEY srtza = 'A'.
+      IF sy-subrc <> 0.
+        READ TABLE lt_rgdir INTO ls_rgdir INDEX 1.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+
+  IF ls_rgdir-seqnr IS INITIAL.
+    ev_message = |조건에 맞는 급여 결과를 찾을 수 없습니다 (INPER: { lv_inper }, PAYTY: '{ lv_payty }')|.
+    RETURN.
+  ENDIF.
+
+  " 3. 한국 급여 결과(RT 등) 읽기
+  CALL FUNCTION 'PYXX_READ_PAYROLL_RESULT'
+    EXPORTING
+      clusterid                    = 'KR'
+      employeenumber               = lv_pernr
+      sequencenumber               = ls_rgdir-seqnr
+    CHANGING
+      payroll_result               = ls_result
+    EXCEPTIONS
+      illegal_is_seqnr             = 1
+      not_found                    = 2
+      country_version_not_matched  = 3
+      OTHERS                       = 4.
+
+  IF sy-subrc <> 0.
+    ev_message = |급여 결과 읽기 실패 (rc={ sy-subrc }, seqnr={ ls_rgdir-seqnr })|.
+    RETURN.
+  ENDIF.
+
+  ev_ok    = 'X'.
+  ev_seqnr = ls_rgdir-seqnr.
+  ev_fpper = ls_rgdir-fpper.
+  ev_inper = ls_rgdir-inper.
+  ev_payty = ls_rgdir-payty.
+  ev_payid = ls_rgdir-payid.
+  ev_bondt = ls_rgdir-bondt.
+  ev_paydt = ls_rgdir-paydt.
+  ev_ocrsn = ls_rgdir-ocrsn.
+  ev_message = |조회 성공 (순번: { ls_rgdir-seqnr }, 귀속: { ls_rgdir-fpper }, 유형: '{ ls_rgdir-payty }')|.
+
+  " RT 테이블 전달
+  et_rt[] = ls_result-inter-rt.
+ENDFUNCTION.
